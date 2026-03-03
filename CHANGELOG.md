@@ -32,6 +32,8 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Discord/lifecycle startup status: push an immediate `connected` status snapshot when the gateway is already connected before lifecycle debug listeners attach, with abort-guarding to avoid contradictory status flips during pre-aborted startup. (#32336) Thanks @mitchmcalister.
+- Cron/isolated delivery target fallback: remove early unresolved-target return so cron delivery can flow through shared outbound target resolution (including per-channel `resolveDefaultTo` fallback) when `delivery.to` is omitted. (#32364) Thanks @hclsys.
 - OpenAI/Responses WebSocket tool-call id hygiene: normalize blank/whitespace streamed tool-call ids before persistence, and block empty `function_call_output.call_id` payloads in the WS conversion path to avoid OpenAI 400 errors (`Invalid 'input[n].call_id': empty string`), with regression coverage for both inbound stream normalization and outbound payload guards.
 - Gateway/Control UI basePath webhook passthrough: let non-read methods under configured `controlUiBasePath` fall through to plugin routes (instead of returning Control UI 405), restoring webhook handlers behind basePath mounts. (#32311) Thanks @ademczuk.
 - CLI/Config validation and routing hardening: dedupe `openclaw config validate` failures to a single authoritative report, expose allowed-values metadata/hints across core Zod and plugin AJV validation (including `--json` fields), sanitize terminal-rendered validation text, and make command-path parsing root-option-aware across preaction/route/lazy registration (including routed `config get/unset` with split root options). Thanks @gumadeiras.
