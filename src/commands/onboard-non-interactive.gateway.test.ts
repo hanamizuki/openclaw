@@ -6,6 +6,10 @@ import { makeTempWorkspace } from "../test-helpers/workspace.js";
 import { captureEnv } from "../test-utils/env.js";
 import { createThrowingRuntime, readJsonFile } from "./onboard-non-interactive.test-helpers.js";
 
+type InstallGatewayDaemonResult =
+  | { installed: true }
+  | { installed: false; skippedReason?: "systemd-user-unavailable" };
+
 const gatewayClientCalls: Array<{
   url?: string;
   token?: string;
@@ -15,7 +19,7 @@ const gatewayClientCalls: Array<{
 }> = [];
 const ensureWorkspaceAndSessionsMock = vi.fn(async (..._args: unknown[]) => {});
 const installGatewayDaemonNonInteractiveMock = vi.hoisted(() =>
-  vi.fn(async () => ({ installed: true as const })),
+  vi.fn(async (): Promise<InstallGatewayDaemonResult> => ({ installed: true })),
 );
 const gatewayServiceMock = vi.hoisted(() => ({
   label: "LaunchAgent",

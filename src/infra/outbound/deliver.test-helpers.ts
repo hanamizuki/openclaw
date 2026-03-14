@@ -7,28 +7,37 @@ import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createOutboundTestPlugin, createTestRegistry } from "../../test-utils/channel-plugins.js";
 import { createIMessageTestPlugin } from "../../test-utils/imessage-test-plugin.js";
 import { createInternalHookEventPayload } from "../../test-utils/internal-hook-event-payload.js";
+import type { deliverOutboundPayloads as deliverOutboundPayloadsFn } from "./deliver.js";
+
+type DeliverOutboundPayloadsFn = typeof deliverOutboundPayloadsFn;
 
 export const deliverMocks = {
   sessions: {
-    appendAssistantMessageToSessionTranscript: async () => ({ ok: true, sessionFile: "x" }),
+    appendAssistantMessageToSessionTranscript: async (..._args: unknown[]) => ({
+      ok: true,
+      sessionFile: "x",
+    }),
   },
   hooks: {
     runner: {
       hasHooks: () => false,
-      runMessageSent: async () => {},
+      runMessageSent: async (..._args: unknown[]) => {},
     },
   },
   internalHooks: {
-    createInternalHookEvent: createInternalHookEventPayload,
-    triggerInternalHook: async () => {},
+    createInternalHookEvent: (...args: unknown[]) =>
+      createInternalHookEventPayload(
+        ...(args as Parameters<typeof createInternalHookEventPayload>),
+      ),
+    triggerInternalHook: async (..._args: unknown[]) => {},
   },
   queue: {
-    enqueueDelivery: async () => "mock-queue-id",
-    ackDelivery: async () => {},
-    failDelivery: async () => {},
+    enqueueDelivery: async (..._args: unknown[]) => "mock-queue-id",
+    ackDelivery: async (..._args: unknown[]) => {},
+    failDelivery: async (..._args: unknown[]) => {},
   },
   log: {
-    warn: () => {},
+    warn: (..._args: unknown[]) => {},
   },
 };
 
@@ -145,14 +154,17 @@ export const emptyRegistry = createTestRegistry([]);
 export function resetDeliverTestState() {
   setActivePluginRegistry(defaultRegistry);
   deliverMocks.hooks.runner.hasHooks = () => false;
-  deliverMocks.hooks.runner.runMessageSent = async () => {};
-  deliverMocks.internalHooks.createInternalHookEvent = createInternalHookEventPayload;
-  deliverMocks.internalHooks.triggerInternalHook = async () => {};
-  deliverMocks.queue.enqueueDelivery = async () => "mock-queue-id";
-  deliverMocks.queue.ackDelivery = async () => {};
-  deliverMocks.queue.failDelivery = async () => {};
-  deliverMocks.log.warn = () => {};
-  deliverMocks.sessions.appendAssistantMessageToSessionTranscript = async () => ({
+  deliverMocks.hooks.runner.runMessageSent = async (..._args: unknown[]) => {};
+  deliverMocks.internalHooks.createInternalHookEvent = (...args: unknown[]) =>
+    createInternalHookEventPayload(...(args as Parameters<typeof createInternalHookEventPayload>));
+  deliverMocks.internalHooks.triggerInternalHook = async (..._args: unknown[]) => {};
+  deliverMocks.queue.enqueueDelivery = async (..._args: unknown[]) => "mock-queue-id";
+  deliverMocks.queue.ackDelivery = async (..._args: unknown[]) => {};
+  deliverMocks.queue.failDelivery = async (..._args: unknown[]) => {};
+  deliverMocks.log.warn = (..._args: unknown[]) => {};
+  deliverMocks.sessions.appendAssistantMessageToSessionTranscript = async (
+    ..._args: unknown[]
+  ) => ({
     ok: true,
     sessionFile: "x",
   });
@@ -177,15 +189,8 @@ export function resetDeliverTestMocks(params?: { includeSessionMocks?: boolean }
 }
 
 export async function runChunkedWhatsAppDelivery(params: {
-  deliverOutboundPayloads: (params: {
-    cfg: OpenClawConfig;
-    channel: string;
-    to: string;
-    payloads: Array<{ text: string }>;
-    deps: { sendWhatsApp: ReturnType<typeof vi.fn> };
-    mirror?: unknown;
-  }) => Promise<Array<{ messageId?: string; toJid?: string }>>;
-  mirror?: unknown;
+  deliverOutboundPayloads: DeliverOutboundPayloadsFn;
+  mirror?: Parameters<DeliverOutboundPayloadsFn>[0]["mirror"];
 }) {
   const sendWhatsApp = vi
     .fn()
