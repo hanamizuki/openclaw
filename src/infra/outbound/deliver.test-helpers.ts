@@ -191,7 +191,10 @@ export function resetDeliverTestMocks(params?: { includeSessionMocks?: boolean }
 export async function runChunkedWhatsAppDelivery(params: {
   deliverOutboundPayloads: DeliverOutboundPayloadsFn;
   mirror?: Parameters<DeliverOutboundPayloadsFn>[0]["mirror"];
-}) {
+}): Promise<{
+  sendWhatsApp: (...args: unknown[]) => unknown;
+  results: Array<{ messageId?: string; toJid?: string }>;
+}> {
   const sendWhatsApp = vi
     .fn()
     .mockResolvedValueOnce({ messageId: "w1", toJid: "jid" })
@@ -207,5 +210,14 @@ export async function runChunkedWhatsAppDelivery(params: {
     deps: { sendWhatsApp },
     ...(params.mirror ? { mirror: params.mirror } : {}),
   });
-  return { sendWhatsApp, results };
+  return {
+    sendWhatsApp,
+    results: results.map((result) => ({
+      messageId:
+        typeof result.messageId === "string" && result.messageId.length > 0
+          ? result.messageId
+          : undefined,
+      toJid: typeof result.toJid === "string" && result.toJid.length > 0 ? result.toJid : undefined,
+    })),
+  };
 }
