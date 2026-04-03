@@ -43,6 +43,14 @@ export const PROVIDER_SPECIFIC_PATTERNS: readonly ProviderErrorPattern[] = [
     test: /model(?:_is)?_deactivated|model has been deactivated/i,
     reason: "model_not_found",
   },
+
+  // OpenRouter: generic upstream failure — exact match only so compound
+  // messages like "Provider returned error: invalid_api_key" still reach
+  // the auth classifier (#45663)
+  {
+    test: /^provider returned error$/i,
+    reason: "timeout",
+  },
 ];
 
 /**
