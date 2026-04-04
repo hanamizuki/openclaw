@@ -424,9 +424,10 @@ describe("failover-error", () => {
     expect(resolveFailoverReasonFromError({ message: "Provider returned error" })).toBe("timeout");
     // Compound messages with specific error details must NOT be swallowed by
     // the generic pattern — they should reach the appropriate classifier.
+    // "invalid_api_key" matches AMBIGUOUS_AUTH_ERROR_PATTERNS → "auth" (not "auth_permanent").
     expect(
       resolveFailoverReasonFromError({ message: "Provider returned error: invalid_api_key" }),
-    ).toBe("auth_permanent");
+    ).toBe("auth");
   });
 
   it("infers timeout from connection/network error messages", () => {
