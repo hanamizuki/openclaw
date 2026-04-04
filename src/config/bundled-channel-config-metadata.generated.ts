@@ -7753,6 +7753,9 @@ export const GENERATED_BUNDLED_CHANNEL_CONFIG_METADATA = [
           type: "string",
           enum: ["length", "newline"],
         },
+        typingIndicator: {
+          type: "boolean",
+        },
         blockStreaming: {
           type: "boolean",
         },
