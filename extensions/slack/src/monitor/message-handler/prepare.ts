@@ -955,6 +955,45 @@ export async function prepareSlackMessage(params: {
     return null;
   }
 
+  // Drop channel messages that mention another user/subteam but not this bot.
+  // Unlike Discord, Slack implicit mentions (thread participation) are very
+  // broad — they fire for every message in a bot-participated thread, so we
+  // intentionally ignore implicit mentions here and gate on the explicit
+  // `wasMentioned` only. Requires `canDetectMention` (botUserId resolvable or
+  // explicit mention regexes configured) to avoid false drops when we have no
+  // reliable way to tell bot vs non-bot mentions apart.
+  const ignoreOtherMentions = channelConfig?.ignoreOtherMentions ?? false;
+  if (
+    isRoom &&
+    ignoreOtherMentions &&
+    canDetectMention &&
+    hasAnyMention &&
+    !wasMentioned &&
+    !shouldBypassMention
+  ) {
+    logInboundDrop({
+      log: logVerbose,
+      channel: "slack",
+      reason: "other-mention",
+      target: senderId,
+    });
+    const pendingText = (message.text ?? "").trim();
+    recordPendingHistoryEntryIfEnabled({
+      historyMap: ctx.channelHistories,
+      historyKey,
+      limit: ctx.historyLimit,
+      entry: pendingText
+        ? {
+            sender: await resolveSenderName(),
+            body: pendingText,
+            timestamp: message.ts ? Math.round(Number(message.ts) * 1000) : undefined,
+            messageId: message.ts,
+          }
+        : null,
+    });
+    return null;
+  }
+
   if (isRoom && shouldRequireMention && messageIngress.activationAccess.shouldSkip) {
     ctx.logger.info({ channel: message.channel, reason: "no-mention" }, "skipping channel message");
     const pendingText = (message.text ?? "").trim();

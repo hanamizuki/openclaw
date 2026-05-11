@@ -22,6 +22,7 @@ Docs: https://docs.openclaw.ai
 - QA-Lab: add live-only harness self-health scenarios for plugin hook crashes, manifest contract errors, and WebChat direct-reply self-message routing. (#80323) Thanks @100yenadmin.
 - QA-Lab: add runtime tool fixture scenarios and coverage reporting for Codex-native workspace tools, OpenClaw dynamic tools, and optional plugin-backed tools. (#80323) Thanks @100yenadmin.
 - QA-Lab: expose runtime tool fixture coverage through `openclaw qa coverage --runtime-tools`, with optional suite-summary evaluation for parity gate artifacts. (#80323) Thanks @100yenadmin.
+- Channels/Slack: add per-channel `ignoreOtherMentions` (default `false`). When set, drop channel messages that mention another user or subteam but not this bot — the inverse of `requireMention`. Useful in busy channels where the bot would otherwise reply to side conversations. Only applies to channels/groups/MPIMs (not DMs) and requires a resolvable bot user id so the bot/non-bot mention split can be detected reliably. Mirrors the existing Discord `ignoreOtherMentions` option. Thanks @hanamizuki.
 
 ### Fixes
 
