@@ -190,7 +190,7 @@ describe("registerBrowserCli lazy browser subcommands", () => {
     const program = new Command();
     program.name("openclaw");
 
-    registerBrowserCli(program, [
+    await registerBrowserCli(program, [
       "node",
       "openclaw",
       "browser",
@@ -215,7 +215,7 @@ describe("registerBrowserCli lazy browser subcommands", () => {
     const program = new Command();
     program.name("openclaw");
 
-    registerBrowserCli(program, [
+    await registerBrowserCli(program, [
       "node",
       "openclaw",
       "browser",
