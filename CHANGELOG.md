@@ -25,6 +25,7 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Discord/auto-thread-title: raise `DISCORD_THREAD_TITLE_MAX_TOKENS` 512 → 4096 and `DEFAULT_THREAD_TITLE_TIMEOUT_MS` 10 s → 60 s so reasoning models with sizable thinking budgets can still emit a short title, and clamp the effective request to the selected model's output cap (`min(4096, model.maxTokens)`) so a smaller-cap model no longer receives an over-limit request that silently skips the fire-and-forget rename. Thanks @hanamizuki.
 - Feishu: refresh inbound session delivery context for DM, group, and broadcast turns so later replies do not inherit stale WebChat routing. Fixes #78274.
 - QA-Lab/qa-channel: attach redacted agent tool-start traces to outbound `QaBusMessage` records so scenarios can assert actual tool use instead of relying only on reply text. Fixes #67637. Thanks @100yenadmin.
 - QA-Lab: fail live runtime parity reports when assistant-message usage is missing, preventing `0 vs 0` live token rows from being reported as passing proof. Fixes #80411. Thanks @100yenadmin.
