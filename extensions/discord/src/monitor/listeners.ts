@@ -480,29 +480,36 @@ export class DiscordThreadUpdateListener extends ThreadUpdateListener {
     super();
   }
 
-  async handle(data: ThreadUpdateEvent) {
+  async handle(data: ThreadUpdateEvent, client: Client) {
     await runDiscordListenerWithSlowLog({
       logger: this.logger,
       listener: this.constructor.name,
       event: this.type,
       run: async () => {
-        // Discord only fires THREAD_UPDATE when a field actually changes, so
-        // `thread_metadata.archived === true` in this payload means the thread
-        // just transitioned to the archived state.
-        if (!isThreadArchived(data)) {
-          return;
-        }
         const threadId = "id" in data && typeof data.id === "string" ? data.id : undefined;
         if (!threadId) {
           return;
         }
-        const logger = this.logger ?? discordEventQueueLog;
-        const count = await closeDiscordThreadSessions({
-          cfg: this.cfg,
-          threadId,
-        });
-        if (count > 0) {
-          logger.info("Discord thread archived — reset sessions", { threadId, count });
+        if (isThreadArchived(data)) {
+          const logger = this.logger ?? discordEventQueueLog;
+          const count = await closeDiscordThreadSessions({ cfg: this.cfg, threadId });
+          if (count > 0) {
+            logger.info("Discord thread archived — reset sessions", { threadId, count });
+          }
+        } else {
+          // Rejoin unarchived threads to restore MESSAGE_CREATE events (idempotent PUT).
+          try {
+            await client.rest.put(`/channels/${threadId}/thread-members/@me`);
+            (this.logger ?? discordEventQueueLog).info(
+              "Discord thread unarchived — rejoined thread",
+              { threadId },
+            );
+          } catch (err) {
+            (this.logger ?? discordEventQueueLog).warn(
+              danger(`discord thread rejoin failed: ${String(err)}`),
+              { threadId },
+            );
+          }
         }
       },
       onError: (err) => {
