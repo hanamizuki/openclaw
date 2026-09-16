@@ -37,6 +37,7 @@ const LineCommonConfigSchemaBase = z.object({
   responsePrefix: z.string().optional(),
   mediaMaxMb: z.number().optional(),
   webhookPath: z.string().optional(),
+  outboundPolicy: z.enum(["default", "human-approval-only"]).optional(),
   threadBindings: ThreadBindingsSchema.optional(),
 });
 

@@ -222,6 +222,12 @@ Allowlists and policies:
 
 - `channels.line.dmPolicy`: `pairing | allowlist | open | disabled` (default `pairing`)
 - `channels.line.allowFrom`: allowlisted LINE user IDs for DMs; `dmPolicy: "open"` requires `["*"]`
+- `channels.line.outboundPolicy`: `default | human-approval-only` (default `default`). `human-approval-only`
+  makes every OpenClaw-originated send to LINE fail before any API call — auto replies, the
+  `message` tool, restart recovery, approval forwarding, and the CLI all get a non-retryable
+  dispatch error. Use it when a human must approve every customer message and a separate
+  executor pushes through the LINE Messaging API. Inbound webhooks, profile lookups, and the
+  loading animation keep working. Account settings override the channel-wide value.
 - `channels.line.groupPolicy`: `allowlist | open | disabled` (default `allowlist`)
 - `channels.line.groupAllowFrom`: allowlisted LINE user IDs for groups; DM `allowFrom` entries do not admit group senders
 - Per-group overrides: `channels.line.groups.<groupId>.allowFrom` (plus `enabled`, `requireMention`, `systemPrompt`, `skills`). With

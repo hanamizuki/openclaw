@@ -3,6 +3,21 @@ import { describe, expect, it } from "vitest";
 import { LineConfigSchema } from "./config-schema.js";
 
 describe("LineConfigSchema", () => {
+  it("accepts outboundPolicy at root and account level and rejects unknown values", () => {
+    const configured = LineConfigSchema.parse({
+      outboundPolicy: "human-approval-only",
+      accounts: { work: { outboundPolicy: "default" } },
+    });
+    expect(configured).toMatchObject({
+      outboundPolicy: "human-approval-only",
+      accounts: { work: { outboundPolicy: "default" } },
+    });
+    expect(LineConfigSchema.parse({})).not.toHaveProperty("outboundPolicy");
+
+    const rejected = LineConfigSchema.safeParse({ outboundPolicy: "manual" });
+    expect(rejected.success).toBe(false);
+  });
+
   it("preserves root and account join-introduction overrides without materializing defaults", () => {
     const defaults = LineConfigSchema.parse({ accounts: { work: {} } });
     const configured = LineConfigSchema.parse({

@@ -19,7 +19,9 @@ import { PlatformMessageNotDispatchedError } from "openclaw/plugin-sdk/error-run
 import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 import { resolveOutboundMediaUrls } from "openclaw/plugin-sdk/reply-payload";
 import { sanitizeAssistantVisibleText } from "openclaw/plugin-sdk/text-chunking";
+import { resolveLineAccount } from "./accounts.js";
 import { buildLineMediaMessage } from "./outbound-media.js";
+import { assertLineOutboundAllowed } from "./outbound-policy.js";
 import { buildLineQuickReplyFallbackText } from "./quick-reply-fallback.js";
 import {
   createLineQuickReply,
@@ -43,6 +45,14 @@ export const lineOutboundAdapter: NonNullable<ChannelPlugin<ResolvedLineAccount>
   renderPresentation: ({ payload, presentation }) => renderLinePresentation(payload, presentation),
   sendPayload: async ({ to, payload, accountId, cfg, onDeliveryResult }) => {
     const runtime = getLineRuntime();
+    // Policy gate runs before any LINE API call or receipt bookkeeping: under
+    // human-approval-only nothing OpenClaw originates may reach the customer.
+    assertLineOutboundAllowed(
+      (runtime.channel.line?.resolveLineAccount ?? resolveLineAccount)({
+        cfg,
+        accountId: accountId ?? undefined,
+      }),
+    );
     const outboundRuntime = await loadLineOutboundRuntime();
     const rawLineData = (payload.channelData?.line as LineChannelData | undefined) ?? {};
     const lineData =
@@ -295,15 +305,23 @@ export const lineOutboundAdapter: NonNullable<ChannelPlugin<ResolvedLineAccount>
         ...ctx,
         payload: { text: ctx.text },
       }),
-    sendMedia: async ({ cfg, to, text, mediaUrl, accountId }) =>
-      await (
+    sendMedia: async ({ cfg, to, text, mediaUrl, accountId }) => {
+      // Same gate as sendPayload: this path bypasses it and talks to LINE directly.
+      assertLineOutboundAllowed(
+        (getLineRuntime().channel.line?.resolveLineAccount ?? resolveLineAccount)({
+          cfg,
+          accountId: accountId ?? undefined,
+        }),
+      );
+      return await (
         await loadLineOutboundRuntime()
       ).sendMessageLine(to, text, {
         verbose: false,
         mediaUrl,
         cfg,
         accountId: accountId ?? undefined,
-      }),
+      });
+    },
   }),
 };
 

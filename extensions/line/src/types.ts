@@ -4,6 +4,12 @@ import type { MessageReceipt } from "openclaw/plugin-sdk/channel-outbound";
 import type { MediaKind } from "openclaw/plugin-sdk/media-runtime";
 
 export type LineTokenSource = "config" | "env" | "file" | "none";
+/**
+ * `default`: OpenClaw sends to LINE normally. `human-approval-only`: every
+ * OpenClaw-originated send is refused before the LINE API is called; a separate
+ * human-approval executor is the only sender (see outbound-policy.ts).
+ */
+export type LineOutboundPolicy = "default" | "human-approval-only";
 export type LineCredentialStatus = "available" | "configured_unavailable" | "missing";
 export type LineCredentialUnavailableDiagnostic = Extract<
   ReturnType<typeof import("openclaw/plugin-sdk/secret-file-runtime").tryReadSecretFileSync>,
@@ -34,6 +40,7 @@ interface LineAccountBaseConfig {
   mediaMaxMb?: number;
   historyLimit?: number;
   webhookPath?: string;
+  outboundPolicy?: LineOutboundPolicy;
   threadBindings?: LineThreadBindingsConfig;
   groups?: Record<string, LineGroupConfig>;
 }
