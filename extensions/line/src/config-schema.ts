@@ -48,6 +48,7 @@ const LineCommonConfigSchemaBase = z.object({
   streaming: ChannelDeliveryStreamingConfigSchema.optional(),
   mediaMaxMb: z.number().optional(),
   webhookPath: z.string().optional(),
+  outboundPolicy: z.enum(["default", "human-approval-only"]).optional(),
   threadBindings: ThreadBindingsSchema.optional(),
 });
 

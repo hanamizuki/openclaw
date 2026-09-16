@@ -18,7 +18,9 @@ import { PlatformMessageNotDispatchedError } from "openclaw/plugin-sdk/error-run
 import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 import { resolveOutboundMediaUrls } from "openclaw/plugin-sdk/reply-payload";
 import { sanitizeAssistantVisibleText } from "openclaw/plugin-sdk/text-chunking";
+import { resolveLineAccount } from "./accounts.js";
 import { buildLineMediaMessage } from "./outbound-media.js";
+import { assertLineOutboundAllowed } from "./outbound-policy.js";
 import { buildLineQuickReplyFallbackText } from "./quick-reply-fallback.js";
 import {
   canCarryLineQuoteToken,
@@ -60,6 +62,9 @@ export const lineOutboundAdapter: NonNullable<ChannelPlugin<ResolvedLineAccount>
     assertDirectAdapterHandoff,
   }) => {
     const runtime = getLineRuntime();
+    // Policy gate runs before any LINE API call or receipt bookkeeping: under
+    // human-approval-only nothing OpenClaw originates may reach the customer.
+    assertLineOutboundAllowed(resolveLineAccount({ cfg, accountId: accountId ?? undefined }));
     const outboundRuntime = await loadLineOutboundRuntime();
     const rawLineData = (payload.channelData?.line as LineChannelData | undefined) ?? {};
     const lineData =
@@ -325,8 +330,10 @@ export const lineOutboundAdapter: NonNullable<ChannelPlugin<ResolvedLineAccount>
       accountId,
       replyToId,
       assertDirectAdapterHandoff,
-    }) =>
-      await (
+    }) => {
+      // Same gate as sendPayload: this path bypasses it and talks to LINE directly.
+      assertLineOutboundAllowed(resolveLineAccount({ cfg, accountId: accountId ?? undefined }));
+      return await (
         await loadLineOutboundRuntime()
       ).sendMessageLine(to, text, {
         verbose: false,
@@ -340,7 +347,8 @@ export const lineOutboundAdapter: NonNullable<ChannelPlugin<ResolvedLineAccount>
             }
           : undefined,
         quoteToken: resolveLineQuoteToken({ cfg, accountId, chatId: to, messageId: replyToId }),
-      }),
+      });
+    },
   }),
 };
 

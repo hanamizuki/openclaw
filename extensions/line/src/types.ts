@@ -8,6 +8,12 @@ import type { LineAccountConfigSchema, LineConfigSchema } from "./config-schema.
 import type { lineChannelDataSchema } from "./rich-message-schema.js";
 
 export type LineTokenSource = "config" | "env" | "file" | "none";
+/**
+ * `default`: OpenClaw sends to LINE normally. `human-approval-only`: every
+ * OpenClaw-originated send is refused before the LINE API is called; a separate
+ * human-approval executor is the only sender (see outbound-policy.ts).
+ */
+export type LineOutboundPolicy = "default" | "human-approval-only";
 export type LineCredentialStatus = "available" | "configured_unavailable" | "missing";
 export type LineCredentialUnavailableDiagnostic = Extract<
   ReturnType<typeof import("openclaw/plugin-sdk/secret-file-runtime").tryReadSecretFileSync>,
