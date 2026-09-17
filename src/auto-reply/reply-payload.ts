@@ -107,6 +107,12 @@ export type ReplyPayload = {
   isFallbackNotice?: boolean;
   /** Marks this payload as transient status, not assistant answer content. */
   isStatusNotice?: boolean;
+  /**
+   * Marks host-delivered text (cron announces, operator sends, message-tool sends without a
+   * source conversation) that is not the assistant's reply in the receiving conversation.
+   * Channels that hide bot-authored quote bodies may keep this text as reply context.
+   */
+  isHostNotification?: boolean;
   /** Channel-specific payload data (per-channel envelope). */
   channelData?: Record<string, unknown>;
 };
@@ -417,6 +423,11 @@ export function isReplyPayloadNonTerminalToolErrorWarning(payload: object): bool
 export function copyReplyPayloadMetadata<T extends object>(source: object, payload: T): T {
   const metadata = getReplyPayloadMetadata(source);
   return metadata ? setReplyPayloadMetadata(payload, metadata) : payload;
+}
+
+/** Marks a host-delivered payload so channels can tell it apart from conversation replies. */
+export function markReplyPayloadAsHostNotification(payload: ReplyPayload): ReplyPayload {
+  return copyReplyPayloadMetadata(payload, { ...payload, isHostNotification: true });
 }
 
 /** Marks a host-owned payload as deliverable even when normal source replies are suppressed. */

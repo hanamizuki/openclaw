@@ -2,7 +2,10 @@
 // message/poll path while preserving media policy and transcript mirrors.
 import type { AgentToolResult } from "../../agents/runtime/index.js";
 import type { ExecutionIdentityAdmissionToken } from "../../audit/execution-identity-admission.js";
-import type { ReplyPayload } from "../../auto-reply/reply-payload.js";
+import {
+  markReplyPayloadAsHostNotification,
+  type ReplyPayload,
+} from "../../auto-reply/reply-payload.js";
 import type { ChatType } from "../../channels/chat-type.js";
 import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
 import type { DurableMessageSendIntent, OutboundReplyFacts } from "../../channels/message/types.js";
@@ -67,6 +70,8 @@ type OutboundSendContext = {
   inboundEventKind?: InboundEventKind;
   gateway?: MessageActionGateway;
   toolContext?: ChannelThreadingToolContext;
+  /** True when no authorized source conversation owns this send (scripts, CLI, scheduled runs). */
+  hostNotification?: boolean;
   deps?: OutboundSendDeps;
   dryRun: boolean;
   mirror?: OutboundMirror;
@@ -403,7 +408,9 @@ export async function executeSendAction(params: {
       ...params,
       message,
       queuePolicy,
-      payloads: [corePayload],
+      payloads: [
+        params.ctx.hostNotification ? markReplyPayloadAsHostNotification(corePayload) : corePayload,
+      ],
     });
 
     return {

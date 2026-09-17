@@ -610,6 +610,8 @@ export async function executeMessageSend(ctx: ResolvedActionContext): Promise<Me
       inboundEventKind: input.inboundEventKind,
       gateway,
       toolContext: input.toolContext,
+      // annotateSourceDelivery uses the same test to rule out current-source replies.
+      hostNotification: !input.messageActionAuthorization?.toolContext,
       deps: input.deps,
       dryRun,
       preparedMessageId: input.preparedMessageId,
