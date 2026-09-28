@@ -11,6 +11,9 @@ const RUNTIME_USER_TURN_TRANSCRIPT_CONTEXT = Symbol.for(
 const RUNTIME_USER_TURN_TRANSCRIPT_RECORDER = Symbol.for(
   "openclaw.runtimeUserTurnTranscriptRecorder",
 );
+const RUNTIME_USER_TURN_TRANSCRIPT_CONTENT = Symbol.for(
+  "openclaw.runtimeUserTurnTranscriptContent",
+);
 
 type RuntimeUserTurnTranscriptContext = {
   message: PersistedUserTurnMessage;
@@ -40,6 +43,30 @@ export function takeRuntimeUserTurnTranscriptContext(
     Reflect.deleteProperty(runtimeMessage, RUNTIME_USER_TURN_TRANSCRIPT_CONTEXT);
   }
   return context;
+}
+
+/** Records the transcript form of runtime content that carries model-only additions. */
+export function attachRuntimeUserTurnTranscriptContent(
+  runtimeMessage: PersistedUserTurnMessage,
+  content: PersistedUserTurnMessage["content"],
+): PersistedUserTurnMessage {
+  Object.defineProperty(runtimeMessage, RUNTIME_USER_TURN_TRANSCRIPT_CONTENT, {
+    configurable: true,
+    value: content,
+  });
+  return runtimeMessage;
+}
+
+/**
+ * Reads the transcript form without consuming it: every persistence of this
+ * runtime message must drop the model-only additions, not only the first.
+ */
+export function readRuntimeUserTurnTranscriptContent(
+  runtimeMessage: AgentMessage,
+): PersistedUserTurnMessage["content"] | undefined {
+  return Reflect.get(runtimeMessage, RUNTIME_USER_TURN_TRANSCRIPT_CONTENT) as
+    | PersistedUserTurnMessage["content"]
+    | undefined;
 }
 
 /** Keeps the queued recorder attached to the exact final message until persistence succeeds. */

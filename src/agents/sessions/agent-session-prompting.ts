@@ -3,11 +3,16 @@ import type { ImageContent, TextContent } from "../../llm/types.js";
 import { attachRuntimePromptMediaFacts, type MediaFact } from "../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import { readRuntimePromptImageFactIndexes } from "../../media/runtime-prompt-image-provenance.js";
-import { attachRuntimeUserTurnTranscriptContext } from "../../sessions/user-turn-transcript-runtime-context.js";
+import {
+  attachRuntimeUserTurnTranscriptContent,
+  attachRuntimeUserTurnTranscriptContext,
+} from "../../sessions/user-turn-transcript-runtime-context.js";
 import type {
   PersistedUserTurnMessage,
   UserTurnTranscriptRecorder,
 } from "../../sessions/user-turn-transcript.types.js";
+import type { CurrentInboundPromptContext } from "../embedded-agent-runner/run/params.js";
+import { buildCurrentInboundSteeringPrompt } from "../embedded-agent-runner/run/runtime-context-prompt.js";
 import type { AgentMessage } from "../runtime/index.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
 import { AgentSessionBase } from "./agent-session-base.js";
@@ -405,6 +410,7 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
    * Expands skill commands and prompt templates. Errors on extension commands.
    * @param images Optional image attachments to include with the message
    * @param userTurnTranscriptRecorder Prepared channel fields for transcript-only persistence
+   * @param currentInboundContext This turn's runtime facts, separate from its command and transcript
    * @throws Error if text is an extension command
    */
   async steer(
@@ -415,6 +421,7 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
     imageOrder?: PromptImageOrderEntry[],
     queueIdentity?: string,
     canInject?: () => boolean,
+    currentInboundContext?: CurrentInboundPromptContext,
   ): Promise<void> {
     // Check for extension commands (cannot be queued)
     if (text.startsWith("/")) {
@@ -424,6 +431,8 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
     // Expand skill commands and prompt templates
     let expandedText = this.expandSkillCommand(text);
     expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
+    // Expand commands before adding this turn's model-only context.
+    const steeringPrompt = buildCurrentInboundSteeringPrompt(expandedText, currentInboundContext);
 
     const preparedMessage = await userTurnTranscriptRecorder?.resolveMessage();
     // Transcript preparation may outlive the captured attempt. Recheck its owner
@@ -432,7 +441,7 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
       throw new Error("active session is finalizing");
     }
     await this.queueSteer(
-      expandedText,
+      steeringPrompt,
       images,
       preparedMessage && userTurnTranscriptRecorder
         ? { message: preparedMessage, recorder: userTurnTranscriptRecorder }
@@ -440,6 +449,7 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
       media,
       imageOrder,
       queueIdentity,
+      expandedText,
     );
   }
 
@@ -476,13 +486,22 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
     media?: MediaFact[],
     imageOrder?: PromptImageOrderEntry[],
     queueIdentity?: string,
+    transcriptText: string = text,
   ): Promise<void> {
     const runtimeMessage = this.createUserMessage(text, images);
+    if (transcriptText !== text) {
+      // Model-only steering context never reaches the transcript, including
+      // image turns whose persisted content is taken from the runtime message.
+      attachRuntimeUserTurnTranscriptContent(
+        runtimeMessage,
+        this.createUserContent(transcriptText, images),
+      );
+    }
     const promptMessage = media?.length
       ? attachRuntimePromptMediaFacts(runtimeMessage, media, imageOrder)
       : runtimeMessage;
     setSteeringMessageIdentity(promptMessage, queueIdentity);
-    this.trackQueuedUserMessage(promptMessage, "steering", text);
+    this.trackQueuedUserMessage(promptMessage, "steering", transcriptText);
     this.agent.steer(
       transcriptContext
         ? attachRuntimeUserTurnTranscriptContext(promptMessage, transcriptContext)

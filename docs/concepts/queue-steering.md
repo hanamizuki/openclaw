@@ -25,6 +25,11 @@ Steering does not interrupt a tool call that is already running. The OpenClaw ru
 
 This keeps every requested tool call paired with a result while ensuring accepted steering is model-visible before any later tool can start.
 
+A steered channel reply carries that message's quoted or forwarded context into
+the model input. Quoted content stays conversation data; commands and answers to
+pending questions use the literal incoming text. Text-only transcript entries
+also retain the literal input.
+
 The native Codex app-server harness exposes `turn/steer` instead of OpenClaw runtime's internal steering queue. OpenClaw batches queued prompts for the configured quiet window, then sends a single `turn/steer` request with all collected user input in arrival order. Codex's upstream turn scheduler owns its tool scheduling and consumes accepted steering at the next model boundary; OpenClaw does not add per-tool preemption to that runtime.
 
 Codex review and manual compaction turns reject same-turn steering. When a runtime cannot accept steering in `steer` mode, OpenClaw waits for the active run to finish before starting the prompt.

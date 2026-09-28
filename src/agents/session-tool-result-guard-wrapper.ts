@@ -13,6 +13,7 @@ import {
 } from "../sessions/input-provenance.js";
 import {
   attachRuntimeUserTurnTranscriptRecorder,
+  readRuntimeUserTurnTranscriptContent,
   takeRuntimeUserTurnTranscriptContext,
   takeRuntimeUserTurnTranscriptRecorder,
 } from "../sessions/user-turn-transcript-runtime-context.js";
@@ -217,7 +218,17 @@ export function guardSessionManager(
     runId: opts?.runId,
     transformMessageForPersistence: (message) => {
       queuedUserTurnTranscriptRecorder = undefined;
-      const withProvenance = applyInputProvenanceToUserMessage(message, opts?.inputProvenance);
+      // Steered turns may carry model-only context in their runtime content.
+      const transcriptContent =
+        message.role === "user" ? readRuntimeUserTurnTranscriptContent(message) : undefined;
+      const transcriptMessage: AgentMessage =
+        message.role === "user" && transcriptContent !== undefined
+          ? { ...message, content: transcriptContent }
+          : message;
+      const withProvenance = applyInputProvenanceToUserMessage(
+        transcriptMessage,
+        opts?.inputProvenance,
+      );
       const runtimeContext = takeRuntimeUserTurnTranscriptContext(message);
       const prepared = runtimeContext?.message ?? pendingPreparedUserTurnMessage;
       const recorder =

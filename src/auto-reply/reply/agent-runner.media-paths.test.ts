@@ -480,7 +480,7 @@ describe("runReplyAgent media path normalization", () => {
     expect(parkedSteerFallbackMock).not.toHaveBeenCalled();
   });
 
-  it("steers ordered current-turn images with the active prompt", async () => {
+  it("steers ordered current-turn images and quoted context with the active prompt", async () => {
     queueEmbeddedAgentMessageWithOutcomeAsyncMock.mockImplementation(async (sessionId: string) => ({
       queued: true,
       sessionId,
@@ -493,6 +493,9 @@ describe("runReplyAgent media path normalization", () => {
     ];
     const followupRun = createMediaFollowupRun({ prompt: "compare these" });
     followupRun.images = images;
+    followupRun.currentInboundContext = {
+      text: "Replied message: Which color for the invitation?",
+    };
     followupRun.media = [
       { path: "/tmp/first.jpg", contentType: "image/jpeg" },
       { path: "/tmp/second.png", contentType: "image/png" },
@@ -513,6 +516,7 @@ describe("runReplyAgent media path normalization", () => {
       "compare these",
       {
         abortSignal: undefined,
+        currentInboundContext: followupRun.currentInboundContext,
         steeringMode: "all",
         isInboundUserMessage: true,
         waitForTranscriptCommit: true,

@@ -141,6 +141,9 @@ export async function runActiveReplySteer(params: ActiveReplySteerParams): Promi
       return await fallback("no injectable reply operation");
     }
     const injectionAttempt = beginReplyMessageInjectionTarget(injectionTarget, followupRun.prompt, {
+      ...(followupRun.currentInboundContext
+        ? { currentInboundContext: followupRun.currentInboundContext }
+        : {}),
       steeringMode: "all",
       isInboundUserMessage: true,
       toolAuthorityFingerprint: params.toolAuthorityFingerprint,

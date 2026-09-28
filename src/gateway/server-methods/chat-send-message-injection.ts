@@ -1,8 +1,10 @@
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { resolveCommandAuthorization } from "../../auto-reply/command-auth.js";
+import { resolveEnvelopeFormatOptions } from "../../auto-reply/envelope.js";
 import { emitInboundMessageAuditTerminal } from "../../auto-reply/reply/dispatch-from-config.audit.js";
 import { finalizeInboundContext } from "../../auto-reply/reply/inbound-context.js";
 import { hasInboundAudio } from "../../auto-reply/reply/inbound-media.js";
+import { buildInboundUserContextPrefix } from "../../auto-reply/reply/inbound-meta.js";
 import { emitMessageReceivedHooks } from "../../auto-reply/reply/message-received-hooks.js";
 import { resolveQueueSettings } from "../../auto-reply/reply/queue/settings-runtime.js";
 import {
@@ -65,6 +67,12 @@ export function createChatSendMessageInjectionStarter(params: {
         ? buildChatSendReplyInjectionText({ body: text, cfg, ctx, sessionEntry: entry })
         : text,
       {
+        // Reply-target injection already includes this prefix in its text.
+        currentInboundContext: p.replyToId
+          ? undefined
+          : {
+              text: buildInboundUserContextPrefix(ctx, resolveEnvelopeFormatOptions(cfg), entry),
+            },
         steeringMode: "all",
         isInboundUserMessage: true,
         toolAuthorityOverlay: resolveInboundReplyToolAuthorityOverlay({
