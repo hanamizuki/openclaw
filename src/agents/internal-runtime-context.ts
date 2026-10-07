@@ -21,6 +21,8 @@ export const OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER =
   "OpenClaw runtime context for the active user request in this turn. Do not reply to or describe this context. Use it to continue answering the active user request now. Do not wait for another message.";
 /** Header for runtime events passed as prompt context. */
 export const OPENCLAW_RUNTIME_EVENT_HEADER = "OpenClaw runtime event.";
+/** Transcript prompt persisted for runtime-only turns; it is not a user request. */
+export const OPENCLAW_RUNTIME_EVENT_USER_PROMPT = "Continue the OpenClaw runtime event.";
 /** Custom message type used for structured runtime-context messages. */
 export const OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE = "openclaw.runtime-context";
 

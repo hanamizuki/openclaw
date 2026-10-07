@@ -43,7 +43,10 @@ import {
 } from "../compaction.js";
 import { collectTextContentBlocks } from "../content-blocks.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../copilot-dynamic-headers.js";
-import { stripRuntimeContextCustomMessages } from "../internal-runtime-context.js";
+import {
+  OPENCLAW_RUNTIME_EVENT_USER_PROMPT,
+  stripRuntimeContextCustomMessages,
+} from "../internal-runtime-context.js";
 import {
   buildSessionContext as buildCoreSessionContext,
   type AgentMessage,
@@ -839,11 +842,20 @@ function formatRequiredAskContext(rawAsk: string): string {
   return `${truncateUtf16Safe(source, headBudget)}${REQUIRED_ASK_CONTEXT_TRUNCATED_MARKER}${sliceUtf16Safe(source, -tailBudget)}`;
 }
 
+// Hidden internal turns (memory maintenance) and runtime-only turns persist a
+// user-role prompt that nobody asked for. Treating it as the latest ask makes
+// the quality audit demand the placeholder text and cancel the compaction.
+function isInternalUserPrompt(message: AgentMessage, text: string): boolean {
+  return (
+    Reflect.get(message, "display") === false || text.trim() === OPENCLAW_RUNTIME_EVENT_USER_PROMPT
+  );
+}
+
 function extractLatestUserAsk(messages: AgentMessage[]): string | null {
   for (const message of messages.toReversed()) {
     if (message.role === "user") {
       const ask = extractMessageText(message);
-      if (ask) {
+      if (ask && !isInternalUserPrompt(message, ask)) {
         return ask;
       }
     }

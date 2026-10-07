@@ -15,6 +15,7 @@ import {
 } from "../../plugins/runtime.js";
 import * as compactionModule from "../compaction.js";
 import { buildEmbeddedExtensionFactories } from "../embedded-agent-runner/extensions.js";
+import { OPENCLAW_RUNTIME_EVENT_USER_PROMPT } from "../internal-runtime-context.js";
 import { castAgentMessage } from "../test-helpers/agent-message-fixtures.js";
 import { jsonResult } from "../tools/common.js";
 import { MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES } from "../workspace-bootstrap-read.js";
@@ -1732,6 +1733,29 @@ describe("compaction-safeguard recent-turn preservation", () => {
     expect(quality.ok).toBe(false);
     expect(quality.reasons).toContain("latest_user_ask_not_reflected");
   });
+
+  it.each(["A", "ok", "1"])(
+    "accepts the stop-word-only reply %s that keywords cannot see",
+    (ask) => {
+      const summary = [
+        "## Decisions",
+        `The user replied ${ask} to the proposal.`,
+        "## Open TODOs",
+        "None.",
+        "## Constraints/Rules",
+        "Preserve safety checks.",
+        "## Pending user asks",
+        "No pending asks.",
+        "## Exact identifiers",
+        "None.",
+      ].join("\n");
+
+      expect(auditSummaryQuality({ summary, identifiers: [], latestAsk: ask })).toEqual({
+        ok: true,
+        reasons: [],
+      });
+    },
+  );
 
   it("rejects a shortened non-latin pending ask without the exact request fact", () => {
     const quality = auditSummaryQuality({
@@ -3458,6 +3482,89 @@ describe("compaction-safeguard recent-turn preservation", () => {
     );
     expectCanonicalSummaryHeadingsOnce(finalSummary);
     expect(mockSummarizeInStages).toHaveBeenCalledTimes(2);
+  });
+
+  async function runAfterRuntimeOnlyPrompt(params: {
+    latestAsk: string;
+    pendingAsk: string;
+    display: false | undefined;
+  }) {
+    mockSummarizeInStages.mockReset();
+    mockSummarizeInStages.mockResolvedValue(
+      summaryResult(
+        [
+          "## Decisions",
+          "Keep the current draft.",
+          "## Open TODOs",
+          "None.",
+          "## Constraints/Rules",
+          "Preserve the pending request.",
+          "## Pending user asks",
+          params.pendingAsk,
+          "## Exact identifiers",
+          "None.",
+        ].join("\n"),
+      ),
+    );
+    const sessionManager = stubSessionManager();
+    setCompactionSafeguardRuntime(sessionManager, {
+      model: createAnthropicModelFixture(),
+      recentTurnsPreserve: 0,
+      qualityGuardEnabled: true,
+      qualityGuardMaxRetries: 0,
+    });
+    // Memory maintenance persists the runtime-only prompt hidden; other runtime-only turns keep it visible.
+    const runtimeOnlyPrompt = castAgentMessage({
+      role: "user",
+      content: [{ type: "text", text: OPENCLAW_RUNTIME_EVENT_USER_PROMPT }],
+      ...(params.display === false ? { display: false } : {}),
+      timestamp: 3,
+    });
+    const { result } = await runCompactionScenario({
+      sessionManager,
+      event: {
+        preparation: {
+          messagesToSummarize: [
+            { role: "user", content: params.latestAsk, timestamp: 1 },
+            castAgentMessage({ role: "assistant", content: "Checking the draft.", timestamp: 2 }),
+            runtimeOnlyPrompt,
+            castAgentMessage({ role: "assistant", content: "NO_REPLY", timestamp: 4 }),
+          ] as AgentMessage[],
+          turnPrefixMessages: [] as AgentMessage[],
+          firstKeptEntryId: "entry-5",
+          tokensBefore: 90_000,
+          fileOps: { read: [], edited: [], written: [] },
+          settings: { reserveTokens: 4_000 },
+          isSplitTurn: false,
+        },
+        customInstructions: "",
+        signal: new AbortController().signal,
+      },
+      apiKey: "test-key",
+    });
+    return result;
+  }
+
+  it.each([
+    { name: "hidden memory-maintenance", display: false as const },
+    { name: "visible runtime-only", display: undefined },
+  ])("audits the latest real ask instead of a $name prompt", async ({ display }) => {
+    const latestAsk = "where does the current draft live";
+    const result = await runAfterRuntimeOnlyPrompt({ latestAsk, pendingAsk: latestAsk, display });
+
+    expect(expectCompactionResult(result).summary).toContain(latestAsk);
+    expect(requireRecord(mockAuditSummaryQuality.mock.calls[0]?.[0]).latestAsk).toBe(latestAsk);
+  });
+
+  it("compacts after a one-word reply followed by a hidden runtime prompt", async () => {
+    const result = await runAfterRuntimeOnlyPrompt({
+      latestAsk: "ok",
+      pendingAsk: "None.",
+      display: false,
+    });
+
+    expectCompactionResult(result);
+    expect(requireRecord(mockAuditSummaryQuality.mock.calls[0]?.[0]).latestAsk).toBe("ok");
   });
 
   it("does not let a model-completed split summary settle the owner-provided request", async () => {

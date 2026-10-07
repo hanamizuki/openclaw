@@ -420,19 +420,11 @@ export function extractOpaqueIdentifiers(text: string): string[] {
   ).slice(0, MAX_EXTRACTED_IDENTIFIERS);
 }
 
+// Asks and summaries must share one token space. Summaries always yield keywords,
+// so a raw-word fallback for stop-word-only asks ("A", "ok") could never match
+// and cancelled every compaction whose latest ask was a one-word reply.
 function tokenizeAskOverlapText(text: string): string[] {
-  const normalized = localeLowercasePreservingWhitespace(text.normalize("NFKC")).trim();
-  if (!normalized) {
-    return [];
-  }
-  const keywords = extractKeywords(normalized);
-  if (keywords.length > 0) {
-    return keywords;
-  }
-  return normalized
-    .split(/[^\p{L}\p{N}]+/u)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+  return extractKeywords(localeLowercasePreservingWhitespace(text.normalize("NFKC")).trim());
 }
 
 function resolveAskOverlapRequirement(latestAsk: string | null): {
