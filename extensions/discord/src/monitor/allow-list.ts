@@ -386,6 +386,7 @@ function resolveDiscordChannelConfigEntry(
     roles: entry.roles,
     systemPrompt: entry.systemPrompt,
     includeThreadStarter: entry.includeThreadStarter,
+    botRepliesOptional: entry.botRepliesOptional,
     autoThread: entry.autoThread,
     autoThreadName: entry.autoThreadName,
     autoArchiveDuration: entry.autoArchiveDuration,

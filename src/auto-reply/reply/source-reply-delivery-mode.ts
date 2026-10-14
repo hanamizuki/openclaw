@@ -31,6 +31,8 @@ export type SourceReplyDeliveryModeContext = Pick<
   | "BotUsername"
   | "WasMentioned"
   | "InputProvenance"
+  | "SenderIsBot"
+  | "BotRepliesOptional"
 >;
 
 /** Returns true for text slash commands that lack authorization metadata. */
@@ -132,6 +134,15 @@ export function resolveSourceReplyExpectation(params: {
       surface: params.ctx.Surface ?? params.ctx.Provider,
       conversationType: "group",
     }).policy === "allow"
+  ) {
+    return "optional";
+  }
+  // A channel can opt bot senders out of forced replies, mentions and replies included, so
+  // two bots cannot keep forcing each other to answer. Human senders keep the rules above.
+  if (
+    conversationType === "group" &&
+    params.ctx.SenderIsBot === true &&
+    params.ctx.BotRepliesOptional === true
   ) {
     return "optional";
   }

@@ -44,6 +44,13 @@ export type DiscordGuildChannelConfig = Omit<CommonChannelGroupConfig, "allowFro
   roles?: string[];
   /** If false, omit thread starter context for this channel (default: true). */
   includeThreadStarter?: boolean;
+  /**
+   * If true, a message from another bot in this channel (or its threads) may go unanswered
+   * even when it mentions or replies to this bot, so two bots cannot force each other into an
+   * endless reply loop. Messages from humans keep the normal reply rules.
+   * Default: false.
+   */
+  botRepliesOptional?: boolean;
   /** If true, automatically create a thread for each new message in this channel. */
   autoThread?: boolean;
   /** Archive duration (minutes) for auto-created threads. Valid values: 60, 1440, 4320, 10080. */

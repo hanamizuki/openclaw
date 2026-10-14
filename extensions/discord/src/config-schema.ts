@@ -79,6 +79,8 @@ const DiscordGuildChannelSchema = buildGroupEntrySchema(
     users: DiscordIdListSchema.optional(),
     roles: DiscordIdListSchema.optional(),
     includeThreadStarter: z.boolean().optional(),
+    /** If true, messages from other bots here (mentions and replies included) may go unanswered; human messages keep normal reply rules. */
+    botRepliesOptional: z.boolean().optional(),
     autoThread: z.boolean().optional(),
     /** Naming strategy for auto-created threads. "message" uses message text; "generated" creates an LLM title after thread creation. */
     autoThreadName: z.enum(["message", "generated"]).optional(),

@@ -163,6 +163,25 @@ openclaw logs --follow
 }
 ```
 
+
+    The pair guard only limits the rate. When another bot keeps mentioning or replying to this bot, every such message still requires an answer, so a slow back-and-forth never ends. Set `botRepliesOptional: true` on the guild channel to let bot-authored messages there (mentions and replies included, threads inherit the parent channel) go unanswered with `NO_REPLY`; human messages keep the normal reply rules:
+
+```json5
+{
+  channels: {
+    discord: {
+      guilds: {
+        "<guild-id>": {
+          channels: {
+            "<channel-id>": { botRepliesOptional: true },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
   </Accordion>
 
   <Accordion title="Voice STT drops with DecryptionFailed(...)">

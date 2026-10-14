@@ -596,6 +596,13 @@ export async function buildDiscordMessageProcessContext(params: {
       GroupSubject: isDirectMessage ? undefined : groupChannel,
       GroupChannel: groupChannel,
       ...(isGuildMessage ? { GroupRequireMention: ctx.groupRequireMention } : {}),
+      // Same bot test as sender.isBot above: PluralKit proxies speak for humans.
+      ...(isGuildMessage &&
+      channelConfig?.botRepliesOptional === true &&
+      author.bot &&
+      !sender.isPluralKit
+        ? { BotRepliesOptional: true }
+        : {}),
       ChannelStructuredContext: channelStructuredContext,
       OwnerAllowFrom: ownerAllowFrom,
     },

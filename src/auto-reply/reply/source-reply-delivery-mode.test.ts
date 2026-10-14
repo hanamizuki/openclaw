@@ -4,6 +4,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { CommandTurnContext } from "../command-turn-context.js";
 import {
   resolveSourceReplyDeliveryMode,
+  resolveSourceReplyExpectation,
   resolveSourceReplyVisibilityPolicy,
 } from "./source-reply-delivery-mode.js";
 
@@ -569,5 +570,61 @@ describe("resolveSourceReplyVisibilityPolicy", () => {
         deliverySuppressionReason: "sourceReplyDeliveryMode: message_tool_only",
       },
     );
+  });
+});
+
+describe("resolveSourceReplyExpectation botRepliesOptional", () => {
+  const discordGroup = {
+    Provider: "discord",
+    Surface: "discord",
+    ChatType: "channel",
+    InboundEventKind: "user_request",
+  } as const;
+
+  it.each([
+    { name: "a mention", WasMentioned: true },
+    { name: "a reply ping", WasMentioned: true },
+    { name: "an unmentioned post", WasMentioned: false },
+  ])("lets a bot's $name go unanswered when the channel opts in", ({ WasMentioned }) => {
+    expect(
+      resolveSourceReplyExpectation({
+        ctx: { ...discordGroup, WasMentioned, SenderIsBot: true, BotRepliesOptional: true },
+        cfg: emptyConfig,
+      }),
+    ).toBe("optional");
+  });
+
+  it("keeps a mentioned bot required when the channel does not opt in", () => {
+    expect(
+      resolveSourceReplyExpectation({
+        ctx: { ...discordGroup, WasMentioned: true, SenderIsBot: true },
+        cfg: { agents: { defaults: { silentReply: { group: "allow" } } } },
+      }),
+    ).toBe("required");
+  });
+
+  it("keeps human senders required even when the flag is present", () => {
+    expect(
+      resolveSourceReplyExpectation({
+        ctx: { ...discordGroup, WasMentioned: true, SenderIsBot: false, BotRepliesOptional: true },
+        cfg: emptyConfig,
+      }),
+    ).toBe("required");
+  });
+
+  it("keeps direct chats required for bots", () => {
+    expect(
+      resolveSourceReplyExpectation({
+        ctx: {
+          Provider: "discord",
+          Surface: "discord",
+          ChatType: "direct",
+          InboundEventKind: "user_request",
+          SenderIsBot: true,
+          BotRepliesOptional: true,
+        },
+        cfg: emptyConfig,
+      }),
+    ).toBe("required");
   });
 });

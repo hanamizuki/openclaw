@@ -330,6 +330,11 @@ export type MsgContext = Partial<CanonicalInboundText> & {
   SenderTag?: string;
   SenderE164?: string;
   SenderIsBot?: boolean;
+  /**
+   * Channel-ingress fact: the conversation lets this bot sender go unanswered even when it
+   * mentions or replies to the agent (Discord `botRepliesOptional`). Only set for bot senders.
+   */
+  BotRepliesOptional?: boolean;
   /** Channel-ingress fact: sender is the operator's own account (from-me). */
   SenderIsSelf?: boolean;
   Timestamp?: number;

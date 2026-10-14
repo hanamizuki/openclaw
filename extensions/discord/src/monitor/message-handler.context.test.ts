@@ -188,6 +188,31 @@ describe("discord message context", () => {
     expect(payload.SenderIsBot).toBeUndefined();
   });
 
+  it("marks bot messages optional to answer only in channels with botRepliesOptional", async () => {
+    const botAuthor = { id: "B1", username: "otherbot", discriminator: "0", globalName: "Bot", bot: true };
+    const optedIn = { allowed: true, botRepliesOptional: true };
+
+    const bot = await context({ author: botAuthor, channelConfig: optedIn });
+    expect(bot.SenderIsBot).toBe(true);
+    expect(bot.BotRepliesOptional).toBe(true);
+
+    const human = await context({
+      author: { id: "U1", username: "alice", discriminator: "0", globalName: "Alice" },
+      channelConfig: optedIn,
+    });
+    expect(human.BotRepliesOptional).toBeUndefined();
+
+    const notOptedIn = await context({ author: botAuthor, channelConfig: { allowed: true } });
+    expect(notOptedIn.BotRepliesOptional).toBeUndefined();
+
+    const pluralKit = await context({
+      author: botAuthor,
+      sender: { label: "user", name: "Member", tag: "member", isPluralKit: true },
+      channelConfig: optedIn,
+    });
+    expect(pluralKit.BotRepliesOptional).toBeUndefined();
+  });
+
   it("does not duplicate forwarded media already rendered in room-event history text", async () => {
     const guildHistories = new Map();
     const forwardedText = "[Forwarded message]\n<media:image>";
