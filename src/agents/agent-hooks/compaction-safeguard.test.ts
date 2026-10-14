@@ -15,6 +15,7 @@ import {
 import * as compactionModule from "../compaction.js";
 import { buildEmbeddedExtensionFactories } from "../embedded-agent-runner/extensions.js";
 import { castAgentMessage } from "../test-helpers/agent-message-fixtures.js";
+import { RUNTIME_EVENT_USER_PROMPT } from "../internal-runtime-context.js";
 import { timestampedTextAssistant } from "../test-helpers/sparse-transcript.test-support.js";
 import { createZeroUsageFixture } from "../test-helpers/usage-fixtures.js";
 import { jsonResult } from "../tools/common.js";
@@ -1734,6 +1735,64 @@ describe("compaction-safeguard recent-turn preservation", () => {
     expect(mockAuditSummaryQuality).toHaveBeenCalledTimes(1);
     const auditInput = requireRecord(mockCallArg(mockAuditSummaryQuality));
     expect(auditInput.identifiers).toEqual([]);
+  });
+
+  async function runAfterRuntimeOnlyPrompt(params: {
+    latestAsk: string;
+    display: false | undefined;
+  }) {
+    mockSummarizeInStages.mockResolvedValue(
+      structuredSummary({
+        decisions: "Keep the current draft.",
+        rules: "Preserve the pending request.",
+        asks: `Latest user request context: ${JSON.stringify(params.latestAsk)}`,
+        identifiers: "None.",
+      }),
+    );
+    const sessionManager = createQualityGuardSessionManager({ qualityGuardMaxRetries: 0 });
+    // Memory maintenance persists the runtime-only prompt hidden; other runtime-only turns keep it visible.
+    const runtimeOnlyPrompt = castAgentMessage({
+      role: "user",
+      content: [{ type: "text", text: RUNTIME_EVENT_USER_PROMPT }],
+      ...(params.display === false ? { display: false } : {}),
+      timestamp: 3,
+    });
+    const event = createCompactionEvent({
+      preparation: {
+        messagesToSummarize: [
+          userMessage(params.latestAsk, 1),
+          castAgentMessage(timestampedTextAssistant("Checking the draft.", 2)),
+          runtimeOnlyPrompt,
+          castAgentMessage(timestampedTextAssistant("NO_REPLY", 4)),
+        ],
+      },
+    });
+    const { result } = await runCompactionScenario(sessionManager, event);
+    return { result, sessionManager };
+  }
+
+  it.each([
+    { name: "hidden memory-maintenance", display: false as const },
+    { name: "visible runtime-only", display: undefined },
+  ])("audits the latest real ask instead of a $name prompt", async ({ display }) => {
+    const latestAsk = "where does the current draft live";
+    const { result, sessionManager } = await runAfterRuntimeOnlyPrompt({ latestAsk, display });
+
+    expect(expectCompactionResult(result).summary).toContain(latestAsk);
+    expect(mockAuditSummaryQuality).toHaveBeenCalledTimes(1);
+    expect(requireRecord(mockCallArg(mockAuditSummaryQuality)).latestAsk).toBe(latestAsk);
+    expect(consumeCompactionSafeguardCancellation(sessionManager)).toBeNull();
+  });
+
+  it("compacts after a one-word reply followed by a hidden runtime prompt", async () => {
+    const { result, sessionManager } = await runAfterRuntimeOnlyPrompt({
+      latestAsk: "ok",
+      display: false,
+    });
+
+    expectCompactionResult(result);
+    expect(requireRecord(mockCallArg(mockAuditSummaryQuality)).latestAsk).toBe("ok");
+    expect(consumeCompactionSafeguardCancellation(sessionManager)).toBeNull();
   });
 
   it("retains owner facts without summarizing an all-preserved turn", async () => {
