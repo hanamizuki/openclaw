@@ -1,8 +1,14 @@
 // Memory schema operations shared by host maintenance and native publication workers.
 export {
+  dropMemoryChunkFtsTriggers,
   dropMemoryPathFtsTriggers,
   ensureMemoryChunkProvenance,
+  ensureMemoryChunkFtsTriggers,
+  registerMemoryEmbeddingMigrationFunctions,
+  markInvalidImportedMemoryEmbeddings,
+  rebuildMemoryChunkFts,
   ensureMemoryIndexSchema,
+  stageMemoryIndexSchemaExtension,
   ensureMemoryPathFtsTriggers,
   ensureMemoryRecallMetadataSchema,
   MEMORY_EMBEDDING_CACHE_TABLE,
@@ -17,4 +23,4 @@ export {
 export {
   loadSqliteVecExtension,
   loadSqliteVecExtensionFromPath,
-} from "../../packages/memory-host-sdk/src/host/sqlite-vec.js";
+} from "../infra/database-engine/sqlite-vec.js";

@@ -1,15 +1,15 @@
-import type { AgentRunTerminalReplySnapshot } from "../../agents/agent-run-terminal-reply.types.js";
 import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent-runner/types.js";
 import type { NormalizeReplySkipReason } from "../../auto-reply/reply/normalize-reply-skip-reason.js";
 /** Execution and result contracts for isolated cron agent runs. */
 import type {
-  CronJob,
   CronDeliveryTrace,
   CronResolvedDeliveryState,
   CronNextCheckProposal,
   CronRunOutcome,
   CronRunTelemetry,
 } from "../types.js";
+
+export type CronLaneWaitCallback = (info?: { waiting?: boolean }) => void;
 
 /** Pre-run disposition returned when isolated cron work never enters an agent runner. */
 export type CronAgentAdmissionDisposition = "session-conflict" | "rejected";
@@ -22,8 +22,6 @@ export type RunCronAgentTurnResult = {
   deliveryState?: CronResolvedDeliveryState;
   /** Last non-empty agent text output (not truncated). */
   outputText?: string;
-  /** Terminal model-reply fact without exposing reply text. */
-  replyDisposition?: AgentRunTerminalReplySnapshot["disposition"];
   /** Confirmed target delivery, including matching message-tool sends; unknown is omitted. */
   delivered?: boolean;
   /**
@@ -40,9 +38,6 @@ export type RunCronAgentTurnResult = {
   nextCheck?: CronNextCheckProposal;
 } & CronRunOutcome &
   CronRunTelemetry;
-
-/** Agent payload accepted by an isolated cron execution. */
-export type AgentTurnPayload = Extract<CronJob["payload"], { kind: "agentTurn" }> | null;
 
 /** Runner-start metadata delivered to the outer execution owner. */
 export type CronRunnerStartedInfo = {

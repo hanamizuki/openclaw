@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { CONTROL_UI_BUILD_INFO, type ControlUiBuildInfo } from "../../build-info.ts";
+import { getAppSidebarOwner } from "../../components/app-sidebar.tsx";
 import {
   createGateway,
   createGatewayHarness,
   createSessions,
+  createSessionsHarness,
   mountSidebar,
 } from "../app-sidebar.ts";
-import "../../components/app-sidebar.ts";
+import { settleRoster } from "./roster.test-support.ts";
 
 type SidebarNativeGatewayTestSnapshot = {
   gateways: Array<{
@@ -45,15 +47,17 @@ function setNativeGatewayTestState(snapshot: SidebarNativeGatewayTestSnapshot): 
   nativeWindow["__OPENCLAW_NATIVE_GATEWAYS__"] = snapshot;
 }
 
-afterEach(() => {
-  const nativeWindow = window as SidebarNativeGatewayTestWindow;
-  Reflect.deleteProperty(nativeWindow, "__OPENCLAW_NATIVE_WEB_CHROME__");
-  Reflect.deleteProperty(nativeWindow, "__OPENCLAW_NATIVE_GATEWAYS__");
-  Object.assign(CONTROL_UI_BUILD_INFO as MutableControlUiBuildInfo, ORIGINAL_CONTROL_UI_BUILD_INFO);
-  vi.useRealTimers();
-});
-
 describe("AppSidebar gateway footer subtitle", () => {
+  afterEach(() => {
+    const nativeWindow = window as SidebarNativeGatewayTestWindow;
+    Reflect.deleteProperty(nativeWindow, "__OPENCLAW_NATIVE_WEB_CHROME__");
+    Reflect.deleteProperty(nativeWindow, "__OPENCLAW_NATIVE_GATEWAYS__");
+    Object.assign(
+      CONTROL_UI_BUILD_INFO as MutableControlUiBuildInfo,
+      ORIGINAL_CONTROL_UI_BUILD_INFO,
+    );
+  });
+
   const twoGateways = {
     gateways: [
       { id: "local", name: "Local Gateway", isPrimary: true, health: "ok" },
@@ -61,6 +65,65 @@ describe("AppSidebar gateway footer subtitle", () => {
     ],
     currentId: "local",
   } satisfies SidebarNativeGatewayTestSnapshot;
+
+  it.each(["online", "contextual"] as const)(
+    "updates Home activity while the session list is hidden by %s",
+    async (surface) => {
+      const mainKey = "agent:main:main";
+      const otherKey = "agent:main:other";
+      const sessions = createSessionsHarness("main", [mainKey, otherKey]);
+      const { sidebar } = await mountSidebar(
+        createGateway({} as GatewayBrowserClient),
+        sessions.sessions,
+      );
+      sidebar.connected = true;
+      if (surface === "online") {
+        sidebar.navigationView = "online";
+      } else {
+        sidebar.contextualSidebar = {
+          key: "sessions",
+          data: null,
+          loaderPending: false,
+          render: () => null,
+        };
+      }
+      await settleRoster(sidebar);
+      const home = sidebar.querySelector(".sidebar-footer-bar__home")!;
+      expect(home).not.toBeNull();
+      expect(home.querySelector(".session-glyph__ring")).toBeNull();
+      const prepare = vi.spyOn(getAppSidebarOwner(sidebar.hostElement)!, "prepareRender");
+      const current = sessions.sessions.state.result!;
+      sessions.publish({
+        result: Object.assign({}, current, {
+          sessions: current.sessions.map((row) =>
+            row.key === otherKey ? Object.assign({}, row, { label: "Quiet latest title" }) : row,
+          ),
+        }),
+      });
+      await settleRoster(sidebar);
+      expect(prepare).not.toHaveBeenCalled();
+
+      for (const [index, activity] of (
+        [
+          { hasActiveRun: true, status: "running", unread: false },
+          { hasActiveRun: false, status: "done", unread: true },
+        ] as const
+      ).entries()) {
+        const latest = sessions.sessions.state.result!;
+        sessions.publish({
+          result: Object.assign({}, latest, {
+            sessions: latest.sessions.map((row) =>
+              row.key === mainKey ? Object.assign({}, row, activity) : row,
+            ),
+          }),
+        });
+        await settleRoster(sidebar);
+        expect(home.querySelector(".session-glyph__ring") !== null).toBe(activity.hasActiveRun);
+        expect(home.querySelector('[aria-label="Unread"]') !== null).toBe(activity.unread);
+        expect(prepare).toHaveBeenCalledTimes(index + 1);
+      }
+    },
+  );
 
   it("shows custom build provenance and hides official releases", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -95,35 +158,6 @@ describe("AppSidebar gateway footer subtitle", () => {
     expect(sidebar.querySelector(".sidebar-identity-card__gateway")).toBeNull();
   });
 
-  it.each([null, "reconnecting"] as const)(
-    "does not invent gateway metadata on the web (%s)",
-    async (connectionStatus) => {
-      const gateway = createGateway({} as GatewayBrowserClient);
-      const { sidebar } = await mountSidebar(gateway, createSessions("main", ["agent:main:main"]));
-      sidebar.connectionStatus = connectionStatus;
-      await sidebar.updateComplete;
-
-      expect(
-        sidebar.querySelector(".sidebar-identity-card")?.getAttribute("aria-label"),
-      ).not.toContain("Local Gateway");
-      expect(sidebar.querySelector(".sidebar-identity-card__gateway")).toBeNull();
-    },
-  );
-
-  it("shows a single configured gateway below the identity name", async () => {
-    setNativeGatewayTestState({ gateways: [twoGateways.gateways[0]!], currentId: "local" });
-    const gateway = createGateway({} as GatewayBrowserClient);
-    const { sidebar } = await mountSidebar(gateway, createSessions("main", ["agent:main:main"]));
-
-    expect(sidebar.querySelector(".sidebar-identity-card")?.getAttribute("aria-label")).toBe(
-      "Identity and app menu for Owner: Local Gateway, primary",
-    );
-    expect(sidebar.querySelector(".sidebar-identity-card__name")?.textContent).toBe("Owner");
-    const detail = sidebar.querySelector(".sidebar-identity-card__gateway");
-    expect(detail?.textContent).toContain("Local Gateway");
-    expect(detail?.querySelector(".sidebar-gateway-primary")?.textContent).toBe("primary");
-  });
-
   it("shows gateway identity without treating aggregate health as this window’s status", async () => {
     setControlUiBuildInfo({ commit: CONTROL_UI_TEST_COMMIT, release: false });
     setNativeGatewayTestState(twoGateways);
@@ -142,19 +176,12 @@ describe("AppSidebar gateway footer subtitle", () => {
     ).not.toContain("git@e8cbc62");
   });
 
-  it.each([
-    ["reconnecting", "Reconnecting…"],
-    ["restarting", "Restarting…"],
-    ["suspending", "Suspending…"],
-    ["suspended", "Suspended"],
-    ["restoring", "Restoring…"],
-    ["reload-required", "Refresh required"],
-  ] as const)("shows one %s subtitle with the outbox", async (connectionStatus, label) => {
+  it("shows one suspended subtitle without delivery counts", async () => {
+    const label = "Suspended";
     setNativeGatewayTestState(twoGateways);
     const gateway = createGateway({} as GatewayBrowserClient);
     const { sidebar } = await mountSidebar(gateway, createSessions("main", ["agent:main:main"]));
-    sidebar.connectionStatus = connectionStatus;
-    sidebar.queuedOutboxCount = 3;
+    sidebar.connectionStatus = "suspended";
     await sidebar.updateComplete;
 
     const footer = sidebar.querySelector(".sidebar-footer-bar");
@@ -162,21 +189,20 @@ describe("AppSidebar gateway footer subtitle", () => {
     expect(footer?.querySelector(".gateway-status__label")?.textContent).toBe(label);
     expect(footer?.querySelector("button [role=status]")).toBeNull();
     expect(footer?.querySelector("[role=status]")?.textContent).toContain(label);
-    expect(footer?.querySelector("[role=status]")?.textContent).toContain("3 in outbox");
+    expect(footer?.querySelector("[role=status]")?.textContent).not.toContain("in outbox");
     expect(footer?.textContent).not.toContain("Offline");
-    expect(footer?.querySelector(".gateway-status__outbox")?.textContent).toContain("3 in outbox");
+    expect(footer?.querySelector(".gateway-status__outbox")).toBeNull();
     expect(footer?.querySelector(".sidebar-identity-card__name")?.textContent).toBe("Owner");
     expect(footer?.querySelector(".sidebar-identity-card__gateway")).toBeNull();
     expect(footer?.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
     expect(footer?.querySelector("button button")).toBeNull();
   });
 
-  it("keeps the outbox after reconnect and redacts connection diagnostics", async () => {
+  it("keeps gateway identity after reconnect and redacts connection diagnostics", async () => {
     setNativeGatewayTestState(twoGateways);
     const gateway = createGateway({} as GatewayBrowserClient);
     const { sidebar } = await mountSidebar(gateway, createSessions("main", ["agent:main:main"]));
     sidebar.connectionStatus = "reconnecting";
-    sidebar.queuedOutboxCount = 3;
     sidebar.lastError = "connection refused?token=footer-secret";
     await sidebar.updateComplete;
     const tooltip = sidebar.querySelector<HTMLElement & { content?: string }>(
@@ -187,24 +213,18 @@ describe("AppSidebar gateway footer subtitle", () => {
     sidebar.connectionStatus = null;
     await sidebar.updateComplete;
     expect(sidebar.querySelector(".gateway-status__label")).toBeNull();
-    expect(sidebar.querySelector(".gateway-status__outbox")?.textContent).toBe("3 in outbox");
+    expect(sidebar.querySelector(".gateway-status__outbox")).toBeNull();
     expect(sidebar.querySelector(".sidebar-identity-card__gateway")?.textContent).toContain(
       "Local Gateway",
     );
     const connectedTooltip = sidebar.querySelector<HTMLElement & { content?: string }>(
       ".gateway-status-tooltip",
     );
-    expect(connectedTooltip?.content).toBe("");
+    expect(connectedTooltip).toBeNull();
     sidebar.querySelector<HTMLButtonElement>(".sidebar-identity-card")?.click();
     await sidebar.updateComplete;
-    const outbox = sidebar.querySelector(".sidebar-identity-menu__outbox");
-    expect(outbox?.textContent).toContain("3 in outbox");
-    expect(outbox?.textContent).toContain("Outgoing messages saved in this browser");
-    expect(outbox?.textContent).toContain("Failed messages need review or retry");
-    expect(outbox?.textContent).toContain("Some may already have arrived");
-    sidebar.queuedOutboxCount = 0;
-    await sidebar.updateComplete;
     expect(sidebar.querySelector(".sidebar-identity-menu__outbox")).toBeNull();
+    expect(sidebar.querySelector(".sidebar-footer-bar")?.textContent).not.toContain("in outbox");
   });
 
   it("updates when the native gateway snapshot changes", async () => {

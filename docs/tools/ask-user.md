@@ -26,6 +26,10 @@ You can answer from any supported conversation surface:
   or expired questions keep their wording alongside the outcome.
   Switching between pending questions preserves both selected choices and typed
   answers, even when typed text matches an option label.
+  Use number keys to choose an option and Ctrl+Enter (Cmd+Enter on macOS) to
+  continue while the panel, a choice, or an answer field is focused. Plain Enter
+  adds a line in **Other**; links, file pickers, and action buttons keep their
+  native keyboard behavior.
 - The TUI shows a question prompt in both Gateway and local modes. Use arrow
   keys or number keys to choose an option, **Other…** to type an answer, or
   **Skip**. Multi-select prompts let you toggle choices before confirming;
@@ -46,6 +50,22 @@ You can answer from any supported conversation surface:
 Questions from a standalone [attached MCP client](/cli/attach) do not carry an
 OpenClaw run's creator binding. Answer those using the question controls in the
 Control UI, TUI, or native app, not an ordinary channel message.
+
+Guests with `operator.sessions.write` can answer ordinary questions from their
+own authorized agent run in a session they created. The Control UI restores
+those pending questions after reconnecting. Access to another person's session
+does not expose their questions or make them answerable. Secret, administrative,
+and sessionless questions keep their existing privileged access requirements.
+Answering a question does not grant the agent additional permissions.
+
+An accepted answer belongs to the waiting agent turn, which can save its tool
+result and continue after the answer enters conversation history. An unrelated
+new user turn, a changed transcript branch, or revoked run authority still
+prevents that older turn from appending a response.
+
+If a standalone question link cannot refresh after reconnecting, use **Retry**
+to load it again without losing the answer you typed in that page. A question
+that is no longer available remains unavailable.
 
 OpenClaw always enables a free-text **Other** answer. The agent must not add an
 `Other` option to the authored option list.
@@ -71,6 +91,10 @@ the time remaining, dismisses expired prompts, and restores pending questions
 for the selected session after reconnecting or switching sessions. Local mode
 keeps questions in the running process; they do not survive exiting the TUI.
 
+A turn started through the `agent` Gateway method with a messaging-channel
+target also delivers its question to that conversation. The question is an
+explicit tool message; automatic final-reply delivery is configured separately.
+
 ## Async questions
 
 Codex async questions use the same panel above the Control UI composer. They open
@@ -95,12 +119,21 @@ chat message, using the existing outbox and retry controls. Skipping removes tha
 request from the dock without sending an answer. The transcript retains a summary.
 Minimizing alone neither answers nor skips a question.
 
+The question summary shows whether your answer is queued, sending, failed, or
+confirmed in saved conversation history. If delivery fails or becomes uncertain
+after reconnecting, **Retry answer** retries the existing outbox message instead
+of submitting a second answer. **Discard** removes that queued answer and reopens
+its preserved draft in the currently open panes for that conversation.
+Saved replies remain confirmed after reload, including answers edited in the
+outbox or containing quoted question headings. When those headings make individual
+answers ambiguous, the summary shows the saved reply text without splitting it.
+
 ## Timeout and no answer
 
 The default timeout is 900 seconds. `timeoutSeconds` is clamped to the range
 30 through 3600 seconds. This is a maximum human wait, subject to earlier agent
-run cancellation or the overall run timeout. A pending question does not extend
-an explicit run budget.
+run cancellation or the current model attempt's timeout. A pending question
+does not pause or extend that attempt's execution budget.
 
 If the question expires or is cancelled before an answer arrives, the tool
 returns `status: "no_answer"`. The agent then continues with its best judgment.
@@ -164,3 +197,9 @@ The model-facing contract tells the agent to:
 
 The agent should not use `ask_user` to ask whether it may proceed or to confirm
 its own plan.
+
+## Related
+
+- [Secrets](/tools/secrets) — the credential-safe path when the answer is a secret
+- [Control UI](/web/control-ui) — where the docked answer panel appears
+- [Tools overview](/tools) — the rest of the built-in tool surface

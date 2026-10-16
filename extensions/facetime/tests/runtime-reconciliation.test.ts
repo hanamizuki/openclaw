@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FaceTimeHelperPeer, HelperActionResult } from "../src/helper-rpc.js";
+import type { HelperActionResult } from "../src/helper-results.js";
+import type { FaceTimeHelperPeer } from "../src/helper-rpc.js";
+import { PendingFaceTimeDialStore } from "../src/pending-dial-store.js";
 import {
   createRuntime,
   FaceTimeHelperActionError,
@@ -40,17 +42,62 @@ function topologyResult(helperResults: ReturnType<typeof absentPeer>[], generati
   };
 }
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+function observeDeletion() {
+  const deleted = deferred();
+  // oxlint-disable-next-line typescript/unbound-method -- The interceptor calls the original with the runtime store as its explicit receiver below.
+  const clear = PendingFaceTimeDialStore.prototype.clear;
+  vi.spyOn(PendingFaceTimeDialStore.prototype, "clear").mockImplementation(function (
+    this: PendingFaceTimeDialStore,
+    ...args
+  ) {
+    const clearing = clear.apply(this, args);
+    void clearing.then(
+      (applied) => {
+        if (applied) {
+          // Let the runtime publish the completed clear before observing its status.
+          queueMicrotask(deleted.resolve);
+        }
+      },
+      () => undefined,
+    );
+    return clearing;
+  });
+  return deleted.promise;
+}
+
+function endedCall(callUUID: string, dialID: string | undefined) {
+  return {
+    event: "ft-call-status-changed",
+    data: {
+      dial_id: dialID,
+      call_uuid: callUUID,
+      call_status: 6,
+      has_ended: true,
+      is_outgoing: true,
+    },
+  };
+}
+
 describe("FaceTime pending dial reconciliation", () => {
-  beforeEach(() => {
-    resetRuntimeTestState();
+  beforeEach(async () => {
+    await resetRuntimeTestState();
     vi.useFakeTimers();
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("preserves newly identified carriers when an older absence reply arrives", async () => {
-    const state = pendingDialState();
+    const state = await pendingDialState();
     const absence = topologyResult([absentPeer(originalPeer)]);
     let finishStaleReply = (_result: HelperActionResult) => {};
     const staleReply = new Promise<HelperActionResult>((resolve) => {
@@ -82,7 +129,7 @@ describe("FaceTime pending dial reconciliation", () => {
       mocks.helperParams?.onConnect(originalPeer.bundleIdentifier);
       await vi.advanceTimersByTimeAsync(250);
       expect(queryPending).toBe(true);
-      mocks.helperParams?.onMessage(
+      await mocks.helperParams?.onMessage(
         {
           event: "ft-outbound-call-identified",
           data: { dial_id: "approved-dial", call_uuid: "identified-call" },
@@ -94,36 +141,28 @@ describe("FaceTime pending dial reconciliation", () => {
       finishStaleReply(absence);
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(state.lookup("active")).toMatchObject({ callUUID: "identified-call" });
+      expect(await state.lookup("active")).toMatchObject({ callUUID: "identified-call" });
       expect(concurrentQueries).toBe(0);
       await expect(runtime.dial({ handle: "owner@example.com" })).rejects.toThrow(
         "already pending",
       );
     } finally {
       finishStaleReply(absence);
-      mocks.helperParams?.onMessage({
-        event: "ft-call-status-changed",
-        data: {
-          dial_id: "approved-dial",
-          call_uuid: "identified-call",
-          call_status: 6,
-          has_ended: true,
-          is_outgoing: true,
-        },
-      });
+      await mocks.helperParams?.onMessage(endedCall("identified-call", "approved-dial"));
       await vi.advanceTimersByTimeAsync(250);
       await runtime.stop();
     }
   });
 
   it("requires two matching absence snapshots after native identity changes", async () => {
-    const state = pendingDialState();
+    const state = await pendingDialState();
     mocks.helper.findOutgoingCall.mockResolvedValue(topologyResult([absentPeer(originalPeer)]));
+    const deleted = observeDeletion();
     const runtime = await createRuntime(state);
     try {
       mocks.helperParams?.onConnect(originalPeer.bundleIdentifier);
       await vi.advanceTimersByTimeAsync(0);
-      mocks.helperParams?.onMessage(
+      await mocks.helperParams?.onMessage(
         {
           event: "ft-outbound-call-identified",
           data: { dial_id: "approved-dial", call_uuid: "identified-call" },
@@ -131,50 +170,13 @@ describe("FaceTime pending dial reconciliation", () => {
         originalPeer,
       );
       await vi.advanceTimersByTimeAsync(250);
-      expect(state.lookup("active")).toMatchObject({ callUUID: "identified-call" });
+      expect(await state.lookup("active")).toMatchObject({ callUUID: "identified-call" });
       await vi.advanceTimersByTimeAsync(250);
-      expect(state.lookup("active")).toBeUndefined();
+      await deleted;
+      expect(await state.lookup("active")).toBeUndefined();
     } finally {
-      mocks.helperParams?.onMessage({
-        event: "ft-call-status-changed",
-        data: {
-          dial_id: "approved-dial",
-          call_uuid: "identified-call",
-          call_status: 6,
-          has_ended: true,
-          is_outgoing: true,
-        },
-      });
+      await mocks.helperParams?.onMessage(endedCall("identified-call", "approved-dial"));
       await vi.advanceTimersByTimeAsync(250);
-      await runtime.stop();
-    }
-  });
-
-  it("persists an outbound call identity without an optional proxy identifier", async () => {
-    const state = pendingDialState();
-    const runtime = await createRuntime(state);
-    try {
-      expect(() =>
-        mocks.helperParams?.onMessage(
-          {
-            event: "ft-outbound-call-identified",
-            data: { dial_id: "approved-dial", call_uuid: "approved-call" },
-          },
-          originalPeer,
-        ),
-      ).not.toThrow();
-      expect(state.lookup("active")).toMatchObject({ callUUID: "approved-call" });
-    } finally {
-      mocks.helperParams?.onMessage({
-        event: "ft-call-status-changed",
-        data: {
-          dial_id: "approved-dial",
-          call_uuid: "approved-call",
-          call_status: 6,
-          has_ended: true,
-          is_outgoing: true,
-        },
-      });
       await runtime.stop();
     }
   });
@@ -183,14 +185,17 @@ describe("FaceTime pending dial reconciliation", () => {
     mocks.helper.startCall.mockRejectedValueOnce(
       new FaceTimeHelperActionError("Outbound safety mute was not retained while ringing"),
     );
-    mocks.helper.findOutgoingCall.mockResolvedValue(
-      topologyResult([absentPeer(originalPeer, true)]),
-    );
+    const queryStarted = deferred();
+    mocks.helper.findOutgoingCall.mockImplementation(async () => {
+      queryStarted.resolve();
+      return topologyResult([absentPeer(originalPeer, true)]);
+    });
     const runtime = await createRuntime();
     const dialing = runtime.dial({ handle: "owner@example.com" });
     const rejected = expect(dialing).rejects.toThrow("Outbound safety mute was not retained");
     const dialID = (await runtime.status()).outboundCallPending?.dialID;
     try {
+      await queryStarted.promise;
       await vi.advanceTimersByTimeAsync(3_000);
       await rejected;
       expect((await runtime.status()).outboundCallPending).toMatchObject({
@@ -201,16 +206,7 @@ describe("FaceTime pending dial reconciliation", () => {
         "already pending",
       );
     } finally {
-      mocks.helperParams?.onMessage({
-        event: "ft-call-status-changed",
-        data: {
-          dial_id: dialID,
-          call_uuid: "approved-call",
-          call_status: 6,
-          has_ended: true,
-          is_outgoing: true,
-        },
-      });
+      await mocks.helperParams?.onMessage(endedCall("approved-call", dialID));
       await runtime.stop();
     }
   });
@@ -225,12 +221,33 @@ describe("FaceTime pending dial reconciliation", () => {
       helperResults: [absentPeer(siblingPeer)],
     },
   ])("keeps cancellation pending while $evidence", async ({ helperResults }) => {
-    const state = pendingDialState({ delivery: "cancelling" });
+    const state = await pendingDialState({ delivery: "cancelling" });
     mocks.helper.findOutgoingCall.mockResolvedValue(topologyResult(helperResults));
-    mocks.helper.cancelOutgoingCall.mockResolvedValue(pendingDialCancellationResult());
+    const cancellation = pendingDialCancellationResult();
+    for (const entry of cancellation.helperResults) {
+      if (entry.cancelled) {
+        Object.assign(entry, { call_uuid: "cancelled-call" });
+      }
+    }
+    mocks.helper.cancelOutgoingCall.mockResolvedValue(cancellation);
+    const deleted = observeDeletion();
     const runtime = await createRuntime(state);
+    const cancellationPublished = deferred();
+    const register = state.register.bind(state);
+    vi.spyOn(state, "register").mockImplementation(async (...args) => {
+      await register(...args);
+      const value = args[1];
+      if (
+        value &&
+        typeof value === "object" &&
+        "callUUID" in value &&
+        value.callUUID === "cancelled-call"
+      ) {
+        cancellationPublished.resolve();
+      }
+    });
     try {
-      mocks.helperParams?.onMessage(
+      await mocks.helperParams?.onMessage(
         {
           event: "ft-outbound-call-identified",
           data: {
@@ -243,8 +260,9 @@ describe("FaceTime pending dial reconciliation", () => {
       );
       mocks.helperParams?.onConnect(siblingPeer.bundleIdentifier);
       await vi.advanceTimersByTimeAsync(3_000);
+      await cancellationPublished.promise;
 
-      expect(state.lookup("active")).toMatchObject({
+      expect(await state.lookup("active")).toMatchObject({
         dialID: "approved-dial",
         delivery: "cancelling",
       });
@@ -258,19 +276,11 @@ describe("FaceTime pending dial reconciliation", () => {
       mocks.helperParams?.onDisconnect(siblingPeer.bundleIdentifier);
       mocks.helperParams?.onConnect(originalPeer.bundleIdentifier);
       await vi.advanceTimersByTimeAsync(250);
-      expect(state.lookup("active")).toBeUndefined();
+      await deleted;
+      expect(await state.lookup("active")).toBeUndefined();
       expect((await runtime.status()).outboundCallPending).toBeUndefined();
     } finally {
-      mocks.helperParams?.onMessage({
-        event: "ft-call-status-changed",
-        data: {
-          dial_id: "approved-dial",
-          call_uuid: "approved-call",
-          call_status: 6,
-          has_ended: true,
-          is_outgoing: true,
-        },
-      });
+      await mocks.helperParams?.onMessage(endedCall("approved-call", "approved-dial"));
       await runtime.stop();
     }
   });

@@ -7,7 +7,6 @@ const enDebug = {
     snapshotsTitle: "Snapshots",
     snapshotsSubtitle:
       "Refresh to update status and health snapshots. Heartbeat data updates live.",
-    refreshingSnapshots: "Refreshing Gateway diagnostics.",
     offlineSnapshots: "Connect to the Gateway to refresh diagnostics.",
     status: "Status",
     health: "Health",
@@ -38,6 +37,7 @@ const enDebug = {
       lane: en.debug.lanes.lane,
       sessionLanes: "Session lanes · {count}",
       active: en.debug.lanes.active,
+      activePerSession: "{active} · {limit}/session",
       queued: en.debug.lanes.queued,
       group: "Group",
       blocked: en.debug.lanes.blocked,
@@ -62,7 +62,11 @@ const enDebug = {
       pingDescription: "Round-trip time for the Gateway diagnostics request",
       disk: "Disk",
       memoryMb: "{value} MB",
-      gatewayCpuScope: "Gateway",
+      gatewayCpu: "Gateway CPU",
+      cpuCores: "{value} cores",
+      gatewayCpuScope: "Process only",
+      cpuScopeDescription:
+        "Build and tool subprocesses are excluded. Process and thread percentages use one core as 100%; host CPU uses all logical CPUs.",
       gatewayCpuProcess: "Gateway process",
       cpuBreakdown: "Show Gateway CPU breakdown",
       cpuBreakdownCurrent: "CPU usage",

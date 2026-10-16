@@ -19,7 +19,8 @@ const plugin = {
     registerPiSessionCatalog(api);
     const service = createAcpxRuntimeService({
       pluginConfig: api.pluginConfig,
-      openKeyedStore: (options) => api.runtime.state.openKeyedStore(options),
+      getAllowedAgents: () => api.runtime.config.current().acp?.allowedAgents,
+      openKeyedStore: (options) => api.runtime.state.openKeyedStoreV2(options),
     });
     api.registerService(service);
     const currentConfig = () => api.runtime.config.current().plugins?.entries?.acpx?.config;

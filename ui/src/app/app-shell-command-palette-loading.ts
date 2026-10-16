@@ -1,6 +1,4 @@
-import { html } from "lit";
 import {
-  COMMAND_PALETTE_DIALOG_STYLE,
   COMMAND_PALETTE_OPEN_EVENT,
   isCommandPaletteShortcut,
   type CommandPaletteElement,
@@ -9,23 +7,26 @@ import {
   type CommandPaletteInputHandoff,
   type CommandPaletteOpenInput,
 } from "../components/command-palette-contract.ts";
-import { renderCommandPaletteInput } from "../components/command-palette-input.ts";
 import type { OpenClawModalDialog } from "../components/modal-dialog.ts";
-import { t } from "../i18n/index.ts";
+import { formatUiError } from "../lib/format-error.ts";
 import {
   KEYBOARD_SHORTCUT_COMBOS,
   matchesShortcutCombo,
 } from "../lib/keyboard-shortcut-contract.ts";
+import { showToast } from "../lib/toast.ts";
+import { uploadsEnabled, uploadsDisabledMessage } from "../lib/uploads.ts";
 import type { ApplicationContext, ApplicationNavigationOptions } from "./context.ts";
 import { gatewayPresentationScope } from "./gateway-presentation-scope.ts";
-import type {
-  LazyCustomElementRequestController,
-  OptionalCustomElement,
+import {
+  ensureCustomElementDefined,
+  type LazyCustomElementRequestController,
+  type OptionalCustomElement,
 } from "./lazy-custom-element.ts";
 import { lazyShellEvent, type LazyShellEvent } from "./lazy-shell-action.ts";
 
 type CommandPaletteShellHost = {
-  readonly context?: Pick<ApplicationContext, "gateway">;
+  readonly context?: Pick<ApplicationContext, "gateway"> &
+    Partial<Pick<ApplicationContext, "config">>;
   readonly commandPalette?: CommandPaletteElement;
   readonly commandPaletteElement: OptionalCustomElement;
   readonly commandPaletteTarget?: CommandPaletteTargetDetail;
@@ -146,6 +147,7 @@ export class CommandPaletteLoadingState {
   submitRequested = false;
   #draft: CommandPaletteInputSnapshot | undefined;
   #imageFiles: File[] = [];
+  #mentionTrigger: number | undefined;
   #input: HTMLTextAreaElement | undefined;
   #returnFocus: HTMLElement | null | undefined;
   #composing = false;
@@ -154,9 +156,9 @@ export class CommandPaletteLoadingState {
   #handoffPending = false;
   #generation = 0;
 
-  readonly #host: Pick<CommandPaletteShellHost, "requestUpdate">;
+  readonly #host: Pick<CommandPaletteShellHost, "requestUpdate" | "context">;
 
-  constructor(host: Pick<CommandPaletteShellHost, "requestUpdate">) {
+  constructor(host: Pick<CommandPaletteShellHost, "requestUpdate" | "context">) {
     this.#host = host;
   }
 
@@ -172,6 +174,23 @@ export class CommandPaletteLoadingState {
     if (!this.active) {
       this.#returnFocus =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    if (!customElements.get("openclaw-modal-dialog")) {
+      void ensureCustomElementDefined(
+        "openclaw-modal-dialog",
+        () => import("../components/modal-dialog.ts"),
+      ).then(
+        () => {
+          if (this.active) {
+            this.#host.requestUpdate();
+          }
+        },
+        (error: unknown) => {
+          if (this.active) {
+            showToast({ message: formatUiError(error) });
+          }
+        },
+      );
     }
   }
 
@@ -191,20 +210,43 @@ export class CommandPaletteLoadingState {
       : this.#draft;
   }
 
-  readonly captureInput = (): void => {
+  readonly captureInput = (_value?: string, event?: InputEvent): void => {
     if (!this.active || !this.#input) {
       return;
+    }
+    const input = this.#input;
+    if (
+      !this.#composing &&
+      !event?.isComposing &&
+      event?.inputType === "insertText" &&
+      event.data?.includes("@")
+    ) {
+      this.#mentionTrigger = input.selectionStart - event.data.length + event.data.lastIndexOf("@");
+    } else if (this.#mentionTrigger !== undefined) {
+      // A pasted/replaced token is ordinary text; only continuation of the typed
+      // trigger can open the full picker after its lazy module accepts focus.
+      const end = this.#mentionTrigger + 1;
+      if (
+        event?.inputType === "insertFromPaste" ||
+        event?.inputType === "insertFromDrop" ||
+        this.#draft?.value.slice(0, end) !== input.value.slice(0, end)
+      ) {
+        this.#mentionTrigger = undefined;
+      }
     }
     // The live field owns text and selection until replacement focus accepts it.
     this.#draft = this.#snapshot();
     this.#host.requestUpdate();
   };
 
-  readonly inputRef = (element: Element | undefined): void => {
+  readonly inputRef = (element: Element | undefined, previous?: HTMLTextAreaElement): void => {
+    if (previous && previous !== this.#input) {
+      return;
+    }
+    if (this.active && this.#input && this.#input !== element) {
+      this.#draft = this.#snapshot();
+    }
     if (!(element instanceof HTMLTextAreaElement)) {
-      if (this.active && this.#input) {
-        this.#draft = this.#snapshot();
-      }
       this.#input = undefined;
       return;
     }
@@ -228,6 +270,7 @@ export class CommandPaletteLoadingState {
       return;
     }
     this.#composing = true;
+    this.#mentionTrigger = undefined;
     if (this.#compositionFrame !== undefined) {
       cancelAnimationFrame(this.#compositionFrame);
       this.#compositionFrame = undefined;
@@ -261,6 +304,10 @@ export class CommandPaletteLoadingState {
     );
     if (files.length) {
       event.preventDefault();
+      if (!uploadsEnabled(this.#host.context?.config)) {
+        showToast({ message: uploadsDisabledMessage() });
+        return;
+      }
       this.#imageFiles.push(...files);
     }
   };
@@ -311,6 +358,7 @@ export class CommandPaletteLoadingState {
     const returnFocus = this.#returnFocus;
     const submitRequested = this.submitRequested;
     const imageFiles = this.#imageFiles;
+    const mentionTrigger = this.#mentionTrigger;
     // Retiring the loader must not restore the original field between the two
     // palette inputs. The replacement dialog inherits that original target.
     this.#input?.closest<OpenClawModalDialog>("openclaw-modal-dialog")?.setReturnFocusTarget(null);
@@ -321,6 +369,7 @@ export class CommandPaletteLoadingState {
       returnFocus,
       ...(submitRequested ? { submitRequested: true as const } : {}),
       ...(imageFiles.length ? { imageFiles } : {}),
+      ...(mentionTrigger !== undefined ? { mentionTrigger } : {}),
     };
   }
 
@@ -337,37 +386,7 @@ export class CommandPaletteLoadingState {
     this.#input = undefined;
     this.#draft = undefined;
     this.#imageFiles = [];
+    this.#mentionTrigger = undefined;
     this.#returnFocus = undefined;
   }
-}
-
-export function renderCommandPaletteLoading(
-  state: CommandPaletteLoadingState,
-  onClose: () => void,
-) {
-  const label = t("palette.placeholder");
-  return html`<openclaw-modal-dialog
-    class="cmd-palette-overlay palette"
-    label=${label}
-    style=${COMMAND_PALETTE_DIALOG_STYLE}
-    @modal-cancel=${onClose}
-  >
-    <div
-      class="cmd-palette"
-      aria-busy="true"
-      @compositionstart=${state.handleCompositionStart}
-      @compositionend=${state.handleCompositionEnd}
-      @keydown=${state.handleKeydown}
-    >
-      ${renderCommandPaletteInput({
-        value: state.value,
-        placeholder: label,
-        onInputRef: state.inputRef,
-        onValueChange: state.captureInput,
-        onPaste: state.handlePaste,
-        readOnly: state.submitRequested,
-      })}
-      <div class="cmd-palette__empty" role="status">${t("common.loading")}</div>
-    </div>
-  </openclaw-modal-dialog>`;
 }
