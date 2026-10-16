@@ -42,7 +42,7 @@ export async function deliverPendingDeliveryNotice(
         deliveryContextKey(context) !== deliveryContextKey(deliveryContextFromSession(entry)) ||
         hasActiveDirectPendingFinalDelivery(entry.sessionId, notice.intentId)
       ) {
-        return;
+        return undefined;
       }
       // Start under the reader's FIFO admission: settlement cannot invalidate owed debt first.
       read?.assertCurrent();

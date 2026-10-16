@@ -78,7 +78,7 @@ describe("pending delivery notice end to end", () => {
   let cfg: OpenClawConfig;
   const sessionKey = "agent:main:telegram:direct:chat-1";
   const context = { channel: "telegram", to: "chat-1", accountId: "default" };
-  const completion = {
+  let completion = {
     deliveryId: "delivery-e2e",
     intentId: "intent-e2e",
     sessionId: "session-e2e",
@@ -91,7 +91,7 @@ describe("pending delivery notice end to end", () => {
     sendRecoveryNotice.mockResolvedValue({ suppressed: false });
     appendAssistantMessageToSessionTranscript.mockResolvedValue({ ok: true });
     storePath = path.join(sessionDirs.make(), "sessions.json");
-    completion.storePath = storePath;
+    completion = { ...completion, storePath };
     cfg = { session: { store: storePath } } as OpenClawConfig;
     await replaceSessionEntry(
       { sessionKey, storePath },
