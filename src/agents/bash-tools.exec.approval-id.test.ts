@@ -567,6 +567,34 @@ describe("exec approvals", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it("delivers an auto-threaded agent follow-up to the thread, not the channel it arrived in", async () => {
+    const followup = createDeferredCore<Record<string, unknown>>();
+    mockApproval("allow-once", {
+      agent: (params) => {
+        followup.resolve(requireRecord(params, "agent"));
+        return { status: "ok" };
+      },
+    });
+    const tool = createExecTool({
+      host: "gateway",
+      ask: "always",
+      approvalFollowupMode: "agent",
+      sessionKey: "agent:main:discord:channel:222",
+      elevated,
+      messageProvider: "discord",
+      currentChannelId: "channel:111",
+      currentMessagingTarget: "channel:222",
+      accountId: "default",
+    });
+    const result = await tool.execute("call-gw-followup-discord-auto-thread", {
+      command: "echo ok",
+      workdir: process.cwd(),
+    });
+    expect(result.details.status).toBe("approval-pending");
+    const agent = await followup.promise;
+    expect(agent).toMatchObject({ channel: "discord", to: "channel:222", accountId: "default" });
+  });
+
   it("waits inline for native Discord approval and resumes the same session without a second user turn", async () => {
     const decision = createDeferredCore<{ decision: string }>();
     mockApproval("allow-once", {

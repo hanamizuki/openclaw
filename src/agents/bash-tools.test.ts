@@ -413,6 +413,25 @@ describe("background completion notifications", () => {
     }
   });
 
+  it("routes an auto-threaded completion to the thread, not the channel it arrived in", async () => {
+    const id = await startBackground(
+      notifyTool({
+        messageProvider: "discord",
+        currentChannelId: "channel:111",
+        currentMessagingTarget: "channel:222",
+        accountId: "default",
+      }),
+      shellEcho("notify"),
+    );
+    await waitForExecScope(scopeKey);
+    expect(peekSystemEventEntries(sessionKey)).toContainEqual(
+      expect.objectContaining({
+        contextKey: `exec:${id}`,
+        deliveryContext: expect.objectContaining({ channel: "discord", to: "channel:222" }),
+      }),
+    );
+  });
+
   it("consumes only the acknowledged poll's completion event", async () => {
     const tool = notifyTool();
     const unpolled = await startBackground(tool, shellEcho("unpolled"));
