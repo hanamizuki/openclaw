@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, realpath, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -16,6 +16,26 @@ const repoSourceEntry = path.join(repoRoot, "src", "entry.ts");
 const trustedTsxLoader = pathToFileURL(requireFromHere.resolve("tsx", { paths: [repoRoot] })).href;
 const sourceEnv = { TSX_TSCONFIG_PATH: path.join(repoRoot, "tsconfig.json") };
 const commandArgs = ["sessions", "export-trajectory"];
+
+/** Mirrors a release install: the Gateway starts through `current`, a symlink into `releases/`. */
+async function withReleaseSymlink(
+  run: (layout: { current: string; release: string }) => void,
+): Promise<void> {
+  await withTempDir("openclaw-cli-invocation-", async (tempDir) => {
+    const root = await realpath(tempDir);
+    const release = path.join(root, "releases", "r1");
+    const current = path.join(root, "current");
+    await mkdir(path.join(release, "dist"), { recursive: true });
+    await mkdir(path.join(release, "src"), { recursive: true });
+    await writeFile(path.join(release, "package.json"), JSON.stringify({ name: "openclaw" }));
+    await writeFile(path.join(release, "dist", "index.js"), "");
+    await writeFile(path.join(release, "dist", "helper.js"), "");
+    await writeFile(path.join(release, "src", "entry.ts"), "");
+    await symlink(path.join(repoRoot, "node_modules"), path.join(release, "node_modules"));
+    await symlink(release, current);
+    run({ current, release });
+  });
+}
 
 describe("resolveCurrentOpenClawCliInvocation", () => {
   it("keeps child runtime flags without inheriting debugger ownership", () => {
@@ -120,6 +140,63 @@ describe("resolveCurrentOpenClawCliInvocation", () => {
       command: "/usr/bin/node",
       args: ["--enable-source-maps", distEntry, ...commandArgs],
       cwd: repoRoot,
+    });
+  });
+
+  it("preserves a package entry reached through a release symlink", async () => {
+    await withReleaseSymlink(({ current, release }) => {
+      const entry = path.join(current, "dist", "index.js");
+      expect(
+        resolveCurrentOpenClawCliInvocation(commandArgs, {
+          argv1: entry,
+          cwd: release,
+          execArgv: ["--enable-source-maps"],
+          execPath: "/usr/bin/node",
+        }),
+      ).toEqual({
+        command: "/usr/bin/node",
+        args: ["--enable-source-maps", entry, ...commandArgs],
+        cwd: release,
+      });
+    });
+  });
+
+  it("keeps the TSX contract for a source entry reached through a release symlink", async () => {
+    await withReleaseSymlink(({ current, release }) => {
+      const entry = path.join(current, "src", "entry.ts");
+      const loader = pathToFileURL(requireFromHere.resolve("tsx", { paths: [release] })).href;
+      expect(
+        resolveCurrentOpenClawCliInvocation(commandArgs, {
+          argv1: entry,
+          cwd: release,
+          execArgv: ["--import", "tsx"],
+          execPath: "/usr/bin/node",
+        }),
+      ).toEqual({
+        command: "/usr/bin/node",
+        args: ["--import", loader, entry, ...commandArgs],
+        cwd: release,
+        env: { TSX_TSCONFIG_PATH: path.join(release, "tsconfig.json") },
+      });
+    });
+  });
+
+  it("does not preserve a non-entry file reached through a release symlink", async () => {
+    await withReleaseSymlink(({ current, release }) => {
+      const loader = pathToFileURL(requireFromHere.resolve("tsx", { paths: [release] })).href;
+      expect(
+        resolveCurrentOpenClawCliInvocation(commandArgs, {
+          argv1: path.join(current, "dist", "helper.js"),
+          cwd: release,
+          execArgv: [],
+          execPath: "/usr/bin/node",
+        }),
+      ).toEqual({
+        command: "/usr/bin/node",
+        args: ["--import", loader, path.join(release, "src", "entry.ts"), ...commandArgs],
+        cwd: release,
+        env: { TSX_TSCONFIG_PATH: path.join(release, "tsconfig.json") },
+      });
     });
   });
 

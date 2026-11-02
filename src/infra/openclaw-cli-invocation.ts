@@ -24,6 +24,15 @@ export type OpenClawCliInvocation = Readonly<{
   env?: Record<string, string>;
 }>;
 
+/** Release installs start through a symlink, so entry checks must not depend on path spelling. */
+function canonicalizePath(target: string): string {
+  try {
+    return fs.realpathSync(target);
+  } catch {
+    return path.resolve(target);
+  }
+}
+
 function resolveTsxImport(packageRoot: string): string {
   return pathToFileURL(requireFromHere.resolve("tsx", { paths: [packageRoot] })).href;
 }
@@ -94,6 +103,10 @@ export function resolveCurrentOpenClawCliInvocation(
   const invocationCwd =
     packageRoot ?? cwd ?? (entry ? path.dirname(path.resolve(entry)) : path.dirname(execPath));
   const sourceEntry = packageRoot ? path.join(packageRoot, "src", "entry.ts") : undefined;
+  const isSourceEntry = (candidate: string | undefined): boolean =>
+    candidate !== undefined &&
+    sourceEntry !== undefined &&
+    canonicalizePath(candidate) === canonicalizePath(sourceEntry);
 
   const currentEntry =
     entry &&
@@ -101,7 +114,7 @@ export function resolveCurrentOpenClawCliInvocation(
     entryPackageRoot &&
     (OPENCLAW_CLI_ENTRY_BASENAMES.has(path.basename(entry)) ||
       OPENCLAW_PACKAGE_ENTRY_PATHS.has(
-        path.relative(path.resolve(entryPackageRoot), path.resolve(entry)),
+        path.relative(canonicalizePath(entryPackageRoot), canonicalizePath(entry)),
       ))
       ? entry
       : undefined;
@@ -109,7 +122,7 @@ export function resolveCurrentOpenClawCliInvocation(
     ? [
         ...filterOpenClawChildExecArgv(
           options.execArgv ?? process.execArgv,
-          currentEntry === sourceEntry ? (packageRoot ?? undefined) : undefined,
+          isSourceEntry(currentEntry) ? (packageRoot ?? undefined) : undefined,
         ),
         currentEntry,
       ]
@@ -121,7 +134,7 @@ export function resolveCurrentOpenClawCliInvocation(
   // TSX resolves workspace aliases from cwd unless the source invocation carries
   // its own config. Callers may preserve their workspace cwd without rediscovery.
   const env =
-    packageRoot && !isBunRuntime(execPath) && cliArgs.at(-1) === sourceEntry
+    packageRoot && !isBunRuntime(execPath) && isSourceEntry(cliArgs.at(-1))
       ? { TSX_TSCONFIG_PATH: path.join(packageRoot, "tsconfig.json") }
       : undefined;
   return {
